@@ -60,7 +60,7 @@ export const INITIAL_CONFIG: InverterConnectionConfig = {
   brandName: 'Deye / Sunsynk Hybrid Inverter',
   apiUrl: 'http://192.168.1.180/api/v1/telemetry',
   apiPort: 502,
-  apiKey: 'api_live_deye_sun8k_991823',
+  apiKey: '',
   stationId: 'DEYE-STN-9021',
   inverterSn: 'SN-24089921104',
   pollIntervalSec: 5,
@@ -72,6 +72,8 @@ export const INITIAL_CONFIG: InverterConnectionConfig = {
   smartEcoModeEnabled: true,
   smartEcoBatteryThreshold: 20,
   smartEcoPollIntervalSec: 30,
+  batteryCapacityKwh: 4.8,
+  lastError: null,
 };
 
 export const generateHourlyHistory = (): HourlyStatsPoint[] => {
@@ -112,11 +114,11 @@ export const generateHourlyHistory = (): HourlyStatsPoint[] => {
   });
 };
 
-export const getDailySummaries = (): DailySummary[] => {
+export const getDailySummaries = (dayCount = 7): DailySummary[] => {
   const today = new Date();
   const days: DailySummary[] = [];
 
-  for (let i = 6; i >= 0; i--) {
+  for (let i = dayCount - 1; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     const dateStr = d.toLocaleDateString('ar-EG', { weekday: 'short', month: 'numeric', day: 'numeric' });
@@ -135,7 +137,7 @@ export const getDailySummaries = (): DailySummary[] => {
       gridImportedKwh: gridImp,
       gridExportedKwh: gridExp,
       selfSufficiencyPercent: selfSuff,
-      moneySaved: Math.round(solar * 0.42 * 3.75), // SAR calculation
+      moneySaved: 0, // computed per selected tariff in StatsView
       co2SavedKg: Math.round(solar * 0.72),
       treesEquivalent: Number((solar * 0.72 / 21).toFixed(1)),
     });
@@ -145,7 +147,11 @@ export const getDailySummaries = (): DailySummary[] => {
 };
 
 // Physics-consistent drift for real-time simulation
-export function calculateNextTelemetry(prev: SolarTelemetry, overrides?: Partial<SolarTelemetry>): SolarTelemetry {
+export function calculateNextTelemetry(
+  prev: SolarTelemetry,
+  overrides?: Partial<SolarTelemetry>,
+  dtSec = 5
+): SolarTelemetry {
   if (overrides) {
     return { ...prev, ...overrides, timestamp: new Date().toISOString() };
   }
@@ -201,11 +207,9 @@ export function calculateNextTelemetry(prev: SolarTelemetry, overrides?: Partial
   }
 
   // Increment SOC gradually
-  if (newBatteryPower > 0) {
-    newBatterySoc = Math.min(100, Number((prev.batterySoc + 0.04).toFixed(1)));
-  } else if (newBatteryPower < 0) {
-    newBatterySoc = Math.max(5, Number((prev.batterySoc - 0.05).toFixed(1)));
-  }
+  // SOC follows the energy actually moved in/out of the battery
+  const socDelta = ((newBatteryPower * (dtSec / 3600)) / prev.batteryCapacityKwh) * 100;
+  newBatterySoc = Math.min(100, Math.max(5, Number((prev.batterySoc + socDelta).toFixed(2))));
 
   // Calculate remaining hours
   let remainingHours = 12.0;
@@ -220,18 +224,25 @@ export function calculateNextTelemetry(prev: SolarTelemetry, overrides?: Partial
   const targetTemp = 36 + (newPvPower + newLoadPower) * 1.5;
   const newTemp = Number((prev.inverterTemp * 0.95 + targetTemp * 0.05).toFixed(1));
 
+  // Integrate energy counters from power × elapsed time
+  const dtHours = dtSec / 3600;
+  const round2 = (n: number) => Number(n.toFixed(2));
+
   return {
     ...prev,
     timestamp: new Date().toISOString(),
     pvPower: newPvPower,
-    pvTodayKwh: Number((prev.pvTodayKwh + (newPvPower > 0 ? 0.002 : 0)).toFixed(2)),
+    pvTodayKwh: round2(prev.pvTodayKwh + newPvPower * dtHours),
+    pvPeakTodayKw: Math.max(prev.pvPeakTodayKw, newPvPower),
     batterySoc: newBatterySoc,
     batteryPower: Number(newBatteryPower.toFixed(2)),
     batteryRemainingHours: remainingHours,
     batteryVoltage: Number((48.0 + (newBatterySoc / 100) * 5.6).toFixed(1)),
     loadPower: newLoadPower,
-    loadTodayKwh: Number((prev.loadTodayKwh + 0.001).toFixed(2)),
+    loadTodayKwh: round2(prev.loadTodayKwh + newLoadPower * dtHours),
     gridPower: newGridPower,
+    gridTodayImportKwh: round2(prev.gridTodayImportKwh + Math.max(0, newGridPower) * dtHours),
+    gridTodayExportKwh: round2(prev.gridTodayExportKwh + Math.max(0, -newGridPower) * dtHours),
     inverterTemp: newTemp,
     fanSpeedPercent: Math.min(100, Math.max(25, Math.round((newTemp - 30) * 2.5))),
   };
@@ -625,7 +636,8 @@ export const INITIAL_APPLIANCES: SmartAppliance[] = [
 
 export function evaluateSmartAppliances(
   appliances: SmartAppliance[],
-  telemetry: SolarTelemetry
+  telemetry: SolarTelemetry,
+  elapsedMinutes = 5 / 60
 ): {
   updatedAppliances: SmartAppliance[];
   events: { applianceName: string; action: 'started' | 'stopped'; reason: string }[];
@@ -668,7 +680,7 @@ export function evaluateSmartAppliances(
       return {
         ...app,
         status: 'running' as const,
-        runTimeTodayMinutes: app.runTimeTodayMinutes + 0.1, // increment
+        runTimeTodayMinutes: Number((app.runTimeTodayMinutes + elapsedMinutes).toFixed(2)),
         lastToggledAt: 'الآن (تلقائي)',
       };
     } else {

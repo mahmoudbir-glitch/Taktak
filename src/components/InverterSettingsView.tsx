@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { InverterConnectionConfig, InverterBrand } from '../types/solar';
 import { testInverterApiConnection } from '../services/solarSim';
+import { SmartessSession, fetchSnapshot } from '../services/smartessClient';
+import { SmartessConnectPanel } from './SmartessConnectPanel';
 
 interface InverterSettingsProps {
   config: InverterConnectionConfig;
@@ -18,9 +20,12 @@ interface InverterSettingsProps {
   batterySoc?: number;
   highContrast?: boolean;
   onToggleHighContrast?: () => void;
+  smartessSession?: SmartessSession | null;
+  onSmartessSessionChange?: (session: SmartessSession | null) => void;
 }
 
 const INVERTER_BRANDS: { id: InverterBrand; name: string; protocol: string; defaultPort: number }[] = [
+  { id: 'smartess', name: 'SmartESS (DessMonitor)', protocol: 'SmartESS Cloud API • اتصال حقيقي', defaultPort: 443 },
   { id: 'deye', name: 'Deye / Sunsynk Hybrid', protocol: 'Modbus TCP / Solarman API', defaultPort: 502 },
   { id: 'growatt', name: 'Growatt (ShinePhone)', protocol: 'Growatt Server Open API', defaultPort: 443 },
   { id: 'huawei', name: 'Huawei FusionSolar', protocol: 'Northbound OpenAPI / Kiosk', defaultPort: 443 },
@@ -38,7 +43,10 @@ export const InverterSettingsView: React.FC<InverterSettingsProps> = ({
   batterySoc = 82,
   highContrast = false,
   onToggleHighContrast,
+  smartessSession = null,
+  onSmartessSessionChange,
 }) => {
+  const isSmartess = (brand: InverterBrand) => brand === 'smartess';
   const [formData, setFormData] = useState<InverterConnectionConfig>({ ...config });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -58,8 +66,12 @@ export const InverterSettingsView: React.FC<InverterSettingsProps> = ({
       brand: brandId,
       brandName: selected.name,
       apiPort: selected.defaultPort,
-      apiUrl: brandId === 'deye' || brandId === 'modbus' 
-        ? 'http://192.168.1.180/api/v1/telemetry' 
+      // SmartESS is a real cloud connection, so switch to real mode with it
+      mode: isSmartess(brandId) ? 'real_api' : prev.mode,
+      apiUrl: isSmartess(brandId)
+        ? '/api/smartess'
+        : brandId === 'deye' || brandId === 'modbus'
+        ? 'http://192.168.1.180/api/v1/telemetry'
         : `https://api.${brandId}.com/v2/inverter/live`,
     }));
   };
@@ -68,7 +80,9 @@ export const InverterSettingsView: React.FC<InverterSettingsProps> = ({
     setIsTesting(true);
     setTestResult(null);
     try {
-      const res = await testInverterApiConnection(formData);
+      const res = formData.mode === 'real_api' && isSmartess(formData.brand)
+        ? await testSmartess()
+        : await testInverterApiConnection(formData);
       setTestResult(res);
       if (res.success) {
         setFormData(prev => ({
@@ -79,6 +93,25 @@ export const InverterSettingsView: React.FC<InverterSettingsProps> = ({
       }
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const testSmartess = async () => {
+    const start = performance.now();
+    try {
+      const snap = await fetchSnapshot(smartessSession);
+      return {
+        success: true,
+        responseTimeMs: Math.round(performance.now() - start),
+        message: `تم استلام بيانات حية من SmartESS للجهاز ${snap.deviceName}${snap.online ? '' : ' (الجهاز غير متصل حالياً)'}`,
+        payloadPreview: snap as unknown as Record<string, unknown>,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        responseTimeMs: Math.round(performance.now() - start),
+        message: err instanceof Error ? err.message : 'فشل الاتصال بـ SmartESS',
+      };
     }
   };
 
@@ -245,6 +278,22 @@ export const InverterSettingsView: React.FC<InverterSettingsProps> = ({
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl backdrop-blur-md space-y-4">
         <h3 className="text-sm font-bold text-slate-200">بيانات الاتصال والتوثيق (Credentials)</h3>
 
+        {config.lastError && config.mode === 'real_api' && (
+          <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-500/50 text-rose-200 text-xs">
+            آخر خطأ في الاتصال: {config.lastError}
+          </div>
+        )}
+
+        {isSmartess(formData.brand) ? (
+          onSmartessSessionChange && (
+            <SmartessConnectPanel
+              session={smartessSession}
+              onSessionChange={onSmartessSessionChange}
+              batteryCapacityKwh={formData.batteryCapacityKwh ?? 4.8}
+              onBatteryCapacityChange={(kwh) => setFormData(prev => ({ ...prev, batteryCapacityKwh: kwh }))}
+            />
+          )
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-bold text-slate-300 block mb-1.5">عنوان IP أو رابط الـ API:</label>
@@ -290,6 +339,7 @@ export const InverterSettingsView: React.FC<InverterSettingsProps> = ({
             />
           </div>
         </div>
+        )}
 
         {/* Polling Interval */}
         <div className="pt-2 border-t border-slate-800/80">

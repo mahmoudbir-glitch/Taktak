@@ -35,13 +35,26 @@ export const StatsView: React.FC<StatsViewProps> = ({
   const curSymbol = tariff?.currencySymbol || 'ر.س';
   const curRate = tariff?.gridImportRatePerKwh || 0.28;
 
+  const curExportRate = tariff?.gridExportRatePerKwh ?? 0;
+
+  // Week = last 7 days, month = last 30 days (the table always shows the selected range)
+  const rangeSummaries = dailySummaries.slice(timeRange === 'month' ? -30 : -7);
+  const sum = (pick: (d: DailySummary) => number) => rangeSummaries.reduce((acc, d) => acc + pick(d), 0);
+
   // Calculate high-level metrics
-  const totalPv = timeRange === 'today' ? telemetry.pvTodayKwh : dailySummaries.reduce((acc, d) => acc + d.solarGeneratedKwh, 0);
-  const totalLoad = timeRange === 'today' ? telemetry.loadTodayKwh : dailySummaries.reduce((acc, d) => acc + d.homeConsumedKwh, 0);
-  const totalSavedValue = timeRange === 'today' && savings ? savings.dailyTotalSaved : Math.round(totalPv * curRate);
+  const isToday = timeRange === 'today';
+  const totalPv = isToday ? telemetry.pvTodayKwh : sum(d => d.solarGeneratedKwh);
+  const totalLoad = isToday ? telemetry.loadTodayKwh : sum(d => d.homeConsumedKwh);
+  const totalExport = isToday ? telemetry.gridTodayExportKwh : sum(d => d.gridExportedKwh);
+  const totalImport = isToday ? telemetry.gridTodayImportKwh : sum(d => d.gridImportedKwh);
+  const totalSavedValue = isToday && savings
+    ? savings.dailyTotalSaved
+    : Math.round((totalLoad - totalImport) * curRate + totalExport * curExportRate);
   const totalCo2Kg = Math.round(totalPv * 0.72);
   const treesEq = Number((totalCo2Kg / 21).toFixed(1));
-  const selfSufficiency = Math.min(100, Math.round(((totalPv - Math.max(0, telemetry.gridTodayExportKwh)) / totalLoad) * 100)) || 86;
+  const selfSufficiency = totalLoad > 0
+    ? Math.max(0, Math.min(100, Math.round(((totalLoad - totalImport) / totalLoad) * 100)))
+    : 0;
 
   // Chart coordinate calculations
   const maxKw = 8; // Scale max kW
@@ -61,7 +74,9 @@ export const StatsView: React.FC<StatsViewProps> = ({
   });
 
   const solarPath = points.reduce((acc, p, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${p.x} ${p.ySolar}`, '');
-  const solarArea = `${solarPath} L ${points[points.length - 1].x} ${paddingY + effectiveHeight} L ${points[0].x} ${paddingY + effectiveHeight} Z`;
+  const solarArea = points.length > 0
+    ? `${solarPath} L ${points[points.length - 1].x} ${paddingY + effectiveHeight} L ${points[0].x} ${paddingY + effectiveHeight} Z`
+    : '';
 
   const loadPath = points.reduce((acc, p, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${p.x} ${p.yLoad}`, '');
 
@@ -324,7 +339,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-              {dailySummaries.map((day, idx) => (
+              {rangeSummaries.map((day, idx) => (
                 <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
                   <td className="py-2.5 font-sans font-bold text-slate-200">{day.date}</td>
                   <td className="py-2.5 text-amber-400 font-bold">{day.solarGeneratedKwh} kWh</td>
@@ -336,7 +351,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
                     </span>
                   </td>
                   <td className="py-2.5 text-slate-200">
-                    +{Math.round(day.solarGeneratedKwh * curRate)} {curSymbol}
+                    +{Math.round((day.homeConsumedKwh - day.gridImportedKwh) * curRate + day.gridExportedKwh * curExportRate)} {curSymbol}
                   </td>
                 </tr>
               ))}

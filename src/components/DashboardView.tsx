@@ -74,6 +74,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const isOverheating = telemetry.inverterTemp > 65;
   const isOverloaded = telemetry.loadPower > 6.0;
 
+  const currentTemp = forecast.hourlyForecasts[0]?.tempCelsius;
+  const currentIrradiance = forecast.currentIrradianceWm2 ?? forecast.hourlyForecasts[0]?.irradianceWm2 ?? 0;
+  const selfPowered = telemetry.loadPower > 0
+    ? Math.max(0, Math.min(100, Math.round(((telemetry.loadPower - Math.max(0, telemetry.gridPower)) / telemetry.loadPower) * 100)))
+    : 100;
+
   return (
     <div className="p-4 sm:p-5 space-y-4">
       {/* Top Quick Status Header */}
@@ -110,11 +116,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
-              <span>مشمس ☀️ 32°C</span>
+              <span>{forecast.weatherLabel}{currentTemp !== undefined ? ` ${currentTemp}°C` : ''}</span>
               <span>•</span>
-              <span>إشعاع: 940 W/m²</span>
+              <span>إشعاع: {currentIrradiance} W/m²</span>
               <span>•</span>
-              <span className="text-amber-400 font-bold">ذاتي {Math.round(((telemetry.loadPower - Math.max(0, telemetry.gridPower)) / telemetry.loadPower) * 100)}%</span>
+              <span className="text-amber-400 font-bold">ذاتي {selfPowered}%</span>
             </div>
           </div>
         </div>

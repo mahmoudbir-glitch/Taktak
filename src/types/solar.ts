@@ -12,6 +12,7 @@ export type InverterBrand =
   | 'victron'
   | 'solaredge'
   | 'modbus'
+  | 'smartess'
   | 'custom_api';
 
 export type InverterStatus = 'normal' | 'warning' | 'fault' | 'offline' | 'islanding';
@@ -95,6 +96,10 @@ export interface InverterConnectionConfig {
   smartEcoModeEnabled: boolean;
   smartEcoBatteryThreshold: number;
   smartEcoPollIntervalSec: number;
+  /** Usable battery capacity, used for remaining-time estimates with real data */
+  batteryCapacityKwh?: number;
+  /** Last error from a real connection, shown in settings */
+  lastError?: string | null;
 }
 
 export interface AlertThresholds {
