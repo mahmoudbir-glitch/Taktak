@@ -202,7 +202,7 @@ export const SolarForecastSection: React.FC<SolarForecastProps> = ({
             <span>معدل الإشعاع الشمسي</span>
           </span>
           <span className="text-xs sm:text-sm font-bold font-mono text-slate-200 block truncate">
-            {forecast.currentIrradianceWm2 ? `${forecast.currentIrradianceWm2} W/m²` : '960 W/m²'}
+            {`${forecast.currentIrradianceWm2 ?? forecast.hourlyForecasts[0]?.irradianceWm2 ?? 0} W/m²`}
           </span>
           <span className="text-[9px] text-slate-500 font-mono">حقيقي ومقاس</span>
         </div>

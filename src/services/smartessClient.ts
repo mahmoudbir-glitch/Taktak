@@ -116,6 +116,15 @@ export function snapshotToTelemetry(
     sameDay ? prev[key] : 0;
   const round2 = (n: number) => Number(n.toFixed(2));
 
+  // Readings this inverter doesn't report are shown as "—" (and zeroed so no stale
+  // simulator value or false alarm survives)
+  const unavailable: (keyof SolarTelemetry)[] = ['pvVoltage2', 'pvCurrent2', 'batteryHealth', 'batteryTemp', 'inverterEfficiency'];
+  if (s.pvVoltage === null) unavailable.push('pvVoltage1');
+  if (s.pvCurrent === null && !s.pvVoltage) unavailable.push('pvCurrent1');
+  if (s.gridVoltage === null) unavailable.push('gridVoltage');
+  if (s.gridFrequency === null) unavailable.push('gridFrequency');
+  if (s.inverterTemp === null) unavailable.push('inverterTemp');
+
   const remainingHours = batteryPower < -0.05
     ? Number((((batterySoc / 100) * batteryCapacityKwh) / Math.abs(batteryPower)).toFixed(1))
     : 24;
@@ -125,8 +134,9 @@ export function snapshotToTelemetry(
     timestamp: now.toISOString(),
     pvPower,
     pvTodayKwh: s.energyTodayKwh ?? round2(base('pvTodayKwh') + pvPower * dtHours),
-    pvVoltage1: pick(s.pvVoltage, prev.pvVoltage1),
-    pvCurrent1: pick(s.pvCurrent, prev.pvCurrent1),
+    pvVoltage1: pick(s.pvVoltage, 0),
+    // No current reading: derive it from PV power and voltage when possible
+    pvCurrent1: pick(s.pvCurrent, s.pvVoltage ? Number(((pvPower * 1000) / s.pvVoltage).toFixed(1)) : 0),
     pvVoltage2: 0,
     pvCurrent2: 0,
     pvPeakTodayKw: sameDay ? Math.max(prev.pvPeakTodayKw, pvPower) : pvPower,
@@ -145,12 +155,16 @@ export function snapshotToTelemetry(
 
     gridPower,
     gridStatus: gridConnected ? 'connected' : 'blackout',
-    gridVoltage: pick(s.gridVoltage, gridConnected ? prev.gridVoltage : 0),
-    gridFrequency: pick(s.gridFrequency, gridConnected ? prev.gridFrequency : 0),
+    gridVoltage: pick(s.gridVoltage, 0),
+    gridFrequency: pick(s.gridFrequency, 0),
     gridTodayImportKwh: round2(base('gridTodayImportKwh') + Math.max(0, gridPower) * dtHours),
     gridTodayExportKwh: round2(base('gridTodayExportKwh') + Math.max(0, -gridPower) * dtHours),
 
-    inverterTemp: pick(s.inverterTemp, prev.inverterTemp),
+    inverterTemp: pick(s.inverterTemp, 0),
+    batteryTemp: 0,
+    batteryHealth: 0,
+    fanSpeedPercent: 0,
+    unavailable,
     inverterStatus: s.faulted ? 'fault' : !s.online ? 'offline' : gridConnected ? 'normal' : 'islanding',
     inverterRatedPowerKw: pick(kw(s.ratedPowerW), prev.inverterRatedPowerKw),
   };
