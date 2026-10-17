@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Settings, Wifi, Radio, Server, CheckCircle2, 
   XCircle, Loader2, Key, Sliders, Shield, RefreshCw, Cpu, Database,
@@ -56,6 +56,11 @@ export const InverterSettingsView: React.FC<InverterSettingsProps> = ({
     payloadPreview?: Record<string, unknown>;
   } | null>(null);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Keep the form in step when the app switches source (e.g. after a SmartESS login)
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, mode: config.mode, brand: config.brand, brandName: config.brandName }));
+  }, [config.mode, config.brand, config.brandName]);
 
   const handleBrandChange = (brandId: InverterBrand) => {
     const selected = INVERTER_BRANDS.find(b => b.id === brandId);
