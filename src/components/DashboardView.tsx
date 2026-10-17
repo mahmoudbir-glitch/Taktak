@@ -28,6 +28,9 @@ interface DashboardViewProps {
   tariff: FinancialTariffConfig;
   appliances: SmartAppliance[];
   isEcoActive?: boolean;
+  /** Where the readings come from */
+  dataSource?: 'real' | 'connecting' | 'failed' | 'simulation';
+  onOpenSettings?: () => void;
   effectivePollInterval?: number;
   onLocationChange: (loc: GeoLocation) => void;
   onRequestGps: () => void;
@@ -52,6 +55,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   tariff,
   appliances,
   isEcoActive = false,
+  dataSource = 'simulation',
+  onOpenSettings,
   effectivePollInterval = 5,
   onLocationChange,
   onRequestGps,
@@ -101,7 +106,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
           <div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="font-bold text-sm text-slate-100">
                 {isGridBlackout 
                   ? 'انقطاع الشبكة • وضع الطوارئ نشط'
@@ -111,6 +116,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   ? 'تحذير: حرارة المحول مرتفعة'
                   : 'النظام الشمسي متصل ويعمل بكفاءة'}
               </span>
+
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                  dataSource === 'real'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : dataSource === 'failed'
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    : dataSource === 'connecting'
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                }`}
+                title="مصدر البيانات"
+              >
+                {dataSource === 'real'
+                  ? '● بيانات حقيقية (SmartESS)'
+                  : dataSource === 'failed'
+                  ? '● فشل الاتصال بـ SmartESS'
+                  : dataSource === 'connecting'
+                  ? '● جاري الاتصال بـ SmartESS…'
+                  : '● محاكاة — اضغط للربط بالمحول'}
+              </button>
 
               {isEcoActive && (
                 <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold animate-pulse">

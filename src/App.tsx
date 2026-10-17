@@ -53,10 +53,44 @@ const INITIAL_ALERTS: SmartAlert[] = [
   },
 ];
 
+const CONFIG_KEY = 'shamsak.inverter.config';
+// Only non-secret, user-chosen settings are persisted
+const PERSISTED_KEYS = [
+  'mode', 'brand', 'brandName', 'pollIntervalSec', 'smartEcoModeEnabled',
+  'smartEcoBatteryThreshold', 'smartEcoPollIntervalSec', 'batteryCapacityKwh',
+] as const;
+
+function loadConfig(): InverterConnectionConfig {
+  let stored: Partial<InverterConnectionConfig> | null = null;
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    stored = raw ? JSON.parse(raw) : null;
+  } catch {
+    stored = null;
+  }
+  if (stored) {
+    const picked = Object.fromEntries(PERSISTED_KEYS.filter(k => k in stored!).map(k => [k, stored![k]]));
+    return { ...INITIAL_CONFIG, ...picked, connectionStatus: stored.mode === 'real_api' ? 'connecting' : 'simulated' };
+  }
+  // A saved SmartESS session but no saved settings: go straight to real data
+  if (loadSession()) {
+    return { ...INITIAL_CONFIG, mode: 'real_api', brand: 'smartess', brandName: 'SmartESS (DessMonitor)', connectionStatus: 'connecting' };
+  }
+  return INITIAL_CONFIG;
+}
+
+function saveConfig(config: InverterConnectionConfig) {
+  try {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(Object.fromEntries(PERSISTED_KEYS.map(k => [k, config[k]]))));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState<'dashboard' | 'stats' | 'alerts' | 'settings'>('dashboard');
   const [telemetry, setTelemetry] = useState<SolarTelemetry>(INITIAL_TELEMETRY);
-  const [config, setConfig] = useState<InverterConnectionConfig>(INITIAL_CONFIG);
+  const [config, setConfig] = useState<InverterConnectionConfig>(loadConfig);
   const [thresholds, setThresholds] = useState<AlertThresholds>(DEFAULT_THRESHOLDS);
   const [alerts, setAlerts] = useState<SmartAlert[]>(INITIAL_ALERTS);
   const [activeBannerAlert, setActiveBannerAlert] = useState<SmartAlert | null>(null);
@@ -468,6 +502,16 @@ export default function App() {
   const handleSmartessSessionChange = useCallback((session: SmartessSession | null) => {
     saveSession(session);
     setSmartessSession(session);
+    // Logging in switches to live SmartESS data right away (no separate "save" needed)
+    if (session) {
+      setConfig(prev => {
+        const next: InverterConnectionConfig = {
+          ...prev, mode: 'real_api', brand: 'smartess', brandName: 'SmartESS (DessMonitor)', connectionStatus: 'connecting',
+        };
+        saveConfig(next);
+        return next;
+      });
+    }
   }, []);
 
   const savings = useMemo(() => calculateFinancialSavings(telemetry, tariff), [telemetry, tariff]);
@@ -478,7 +522,7 @@ export default function App() {
     <AndroidFrame
       activeAlertCount={unacknowledgedCount}
       batterySoc={telemetry.batterySoc}
-      inverterConnected={config.connectionStatus !== 'failed'}
+      inverterConnected={isRealSmartess && config.connectionStatus === 'connected'}
       highContrast={highContrast}
       onToggleHighContrast={() => {
         setHighContrast(prev => !prev);
@@ -504,6 +548,10 @@ export default function App() {
             tariff={tariff}
             appliances={appliances}
             isEcoActive={isEcoActive}
+            dataSource={isRealSmartess
+              ? (config.connectionStatus === 'connected' ? 'real' : config.connectionStatus === 'failed' ? 'failed' : 'connecting')
+              : 'simulation'}
+            onOpenSettings={() => setCurrentTab('settings')}
             effectivePollInterval={effectivePollInterval}
             onLocationChange={handleLocationChange}
             onRequestGps={handleRequestGps}
@@ -556,6 +604,7 @@ export default function App() {
             }}
             onSaveConfig={(newConfig) => {
               setConfig(newConfig);
+              saveConfig(newConfig);
               playAlertSound('success');
             }}
           />
