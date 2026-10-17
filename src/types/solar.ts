@@ -62,6 +62,9 @@ export interface SolarTelemetry {
   inverterStatus: InverterStatus;
   inverterRatedPowerKw: number;
   fanSpeedPercent: number;
+
+  /** Fields the data source does not report (shown as "—" instead of a number) */
+  unavailable?: (keyof SolarTelemetry)[];
 }
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';

@@ -245,6 +245,7 @@ export function calculateNextTelemetry(
     gridTodayExportKwh: round2(prev.gridTodayExportKwh + Math.max(0, -newGridPower) * dtHours),
     inverterTemp: newTemp,
     fanSpeedPercent: Math.min(100, Math.max(25, Math.round((newTemp - 30) * 2.5))),
+    unavailable: undefined,
   };
 }
 
@@ -526,16 +527,16 @@ export function calculateFinancialSavings(
   // Revenue from feeding surplus back to the grid
   const exportRevenue = Number((dailyExport * tariff.gridExportRatePerKwh).toFixed(2));
 
-  // What the user would have had to pay the grid without any solar installation
-  const costWithoutSolar = Number((dailyLoad * tariff.gridImportRatePerKwh).toFixed(2));
+  // What the user would have had to pay the grid without any solar installation.
+  // The house used at least what solar covered plus what came from the grid.
+  const houseKwh = Math.max(dailyLoad, selfConsumedKwh + dailyImport);
+  const costWithoutSolar = Number((houseKwh * tariff.gridImportRatePerKwh).toFixed(2));
 
   // What the user actually owes the grid today for imported energy
   const actualGridCost = Number((dailyImport * tariff.gridImportRatePerKwh).toFixed(2));
 
-  // Net daily savings: (What bill would have been - What actually paid to grid) + Export Credit
-  const dailyTotalSaved = Number(
-    Math.max(0, (costWithoutSolar - actualGridCost) + exportRevenue).toFixed(2)
-  );
+  // Net daily savings: solar energy used instead of grid energy + export credit
+  const dailyTotalSaved = Number((directSelfSavings + exportRevenue).toFixed(2));
 
   const dailyReductionPercent = costWithoutSolar > 0
     ? Math.min(100, Math.round(((costWithoutSolar - actualGridCost) / costWithoutSolar) * 100))

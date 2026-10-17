@@ -58,6 +58,8 @@ export interface SmartessSnapshot {
   energyTodayKwh: number | null;
   workingState: string | null;
   faulted: boolean;
+  /** Every parameter the inverter reported, for mapping new models */
+  raw: { id: string; name?: string; val: string; unit?: string }[];
 }
 
 export class SmartessError extends Error {
@@ -291,5 +293,11 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
     energyTodayKwh: row?.energyToday !== undefined && Number.isFinite(Number(row.energyToday)) ? Number(row.energyToday) : null,
     workingState,
     faulted: /fault|error|abnormal/i.test(workingState ?? ''),
+    raw: [...p.entries()].slice(0, 150).map(([id, item]) => ({
+      id,
+      name: typeof item.par === 'string' && item.par !== id ? item.par : undefined,
+      val: String(item.val ?? ''),
+      unit: item.unit || undefined,
+    })),
   };
 }

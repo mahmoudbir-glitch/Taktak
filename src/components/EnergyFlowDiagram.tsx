@@ -41,7 +41,7 @@ export const EnergyFlowDiagram: React.FC<EnergyFlowProps> = ({ telemetry, onNode
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-800/80 text-amber-400 border border-slate-700/60">
-            كفاءة العاكس: {telemetry.inverterEfficiency}%
+            كفاءة العاكس: {telemetry.unavailable?.includes('inverterEfficiency') ? '—' : `${telemetry.inverterEfficiency}%`}
           </span>
         </div>
       </div>
@@ -176,7 +176,7 @@ export const EnergyFlowDiagram: React.FC<EnergyFlowProps> = ({ telemetry, onNode
           <div className="relative p-3.5 rounded-2xl bg-slate-900 border-2 border-amber-500/80 shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform">
             <Zap className="w-8 h-8 text-amber-400 animate-pulse" />
             <div className="absolute -bottom-1 -right-1 px-1.5 py-0.2 bg-slate-800 border border-slate-700 rounded-md text-[9px] font-mono text-emerald-400">
-              {telemetry.inverterTemp}°C
+              {telemetry.unavailable?.includes('inverterTemp') ? '—' : `${telemetry.inverterTemp}°C`}
             </div>
           </div>
           <span className="mt-1 text-xs font-bold text-slate-200">المحول (Inverter)</span>

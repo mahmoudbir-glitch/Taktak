@@ -74,6 +74,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const isOverheating = telemetry.inverterTemp > 65;
   const isOverloaded = telemetry.loadPower > 6.0;
 
+  // "—" for readings the data source doesn't report
+  const na = (key: keyof SolarTelemetry) => telemetry.unavailable?.includes(key) ?? false;
+  const show = (key: keyof SolarTelemetry, text: string) => (na(key) ? '—' : text);
+
   const currentTemp = forecast.hourlyForecasts[0]?.tempCelsius;
   const currentIrradiance = forecast.currentIrradianceWm2 ?? forecast.hourlyForecasts[0]?.irradianceWm2 ?? 0;
   const selfPowered = telemetry.loadPower > 0
@@ -251,22 +255,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
               <div className="text-slate-400 font-sans text-[10px] flex items-center justify-between">
                 <span>المصفوفة 1 (MPPT 1)</span>
-                <span className="text-amber-400 font-bold">{((telemetry.pvVoltage1 * telemetry.pvCurrent1) / 1000).toFixed(2)} kW</span>
+                <span className="text-amber-400 font-bold">{show('pvVoltage1', `${((telemetry.pvVoltage1 * telemetry.pvCurrent1) / 1000).toFixed(2)} kW`)}</span>
               </div>
               <div className="text-slate-300 mt-1 flex justify-between">
-                <span>{telemetry.pvVoltage1} V</span>
-                <span>{telemetry.pvCurrent1} A</span>
+                <span>{show('pvVoltage1', `${telemetry.pvVoltage1} V`)}</span>
+                <span>{show('pvCurrent1', `${telemetry.pvCurrent1} A`)}</span>
               </div>
             </div>
 
             <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
               <div className="text-slate-400 font-sans text-[10px] flex items-center justify-between">
                 <span>المصفوفة 2 (MPPT 2)</span>
-                <span className="text-amber-400 font-bold">{((telemetry.pvVoltage2 * telemetry.pvCurrent2) / 1000).toFixed(2)} kW</span>
+                <span className="text-amber-400 font-bold">{show('pvVoltage2', `${((telemetry.pvVoltage2 * telemetry.pvCurrent2) / 1000).toFixed(2)} kW`)}</span>
               </div>
               <div className="text-slate-300 mt-1 flex justify-between">
-                <span>{telemetry.pvVoltage2} V</span>
-                <span>{telemetry.pvCurrent2} A</span>
+                <span>{show('pvVoltage2', `${telemetry.pvVoltage2} V`)}</span>
+                <span>{show('pvCurrent2', `${telemetry.pvCurrent2} A`)}</span>
               </div>
             </div>
           </div>
@@ -336,8 +340,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="mt-2.5 flex items-center justify-between text-[11px] font-mono text-slate-400">
             <span>الجهد: <strong className="text-slate-200">{telemetry.batteryVoltage} V</strong></span>
-            <span>الحرارة: <strong className="text-slate-200">{telemetry.batteryTemp} °C</strong></span>
-            <span>الصحة (SOH): <strong className="text-emerald-400">{telemetry.batteryHealth}%</strong></span>
+            <span>الحرارة: <strong className="text-slate-200">{show('batteryTemp', `${telemetry.batteryTemp} °C`)}</strong></span>
+            <span>الصحة (SOH): <strong className="text-emerald-400">{show('batteryHealth', `${telemetry.batteryHealth}%`)}</strong></span>
           </div>
         </div>
 
@@ -441,8 +445,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] font-mono text-slate-400">
-            <span>الجهد: <strong className="text-slate-200">{isGridBlackout ? '0.0 V' : `${telemetry.gridVoltage} V`}</strong></span>
-            <span>التردد: <strong className="text-slate-200">{isGridBlackout ? '0.0 Hz' : `${telemetry.gridFrequency} Hz`}</strong></span>
+            <span>الجهد: <strong className="text-slate-200">{isGridBlackout ? '0.0 V' : show('gridVoltage', `${telemetry.gridVoltage} V`)}</strong></span>
+            <span>التردد: <strong className="text-slate-200">{isGridBlackout ? '0.0 Hz' : show('gridFrequency', `${telemetry.gridFrequency} Hz`)}</strong></span>
             <span>المستورد اليوم: <strong className="text-slate-200">{telemetry.gridTodayImportKwh.toFixed(1)} kWh</strong></span>
           </div>
         </div>
@@ -489,7 +493,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 {telemetry.inverterStatus === 'normal' ? 'جاهزية كاملة' : telemetry.inverterStatus}
               </span>
             </div>
-            <span className="text-[11px] text-slate-400">كفاءة التحويل الحالية: {telemetry.inverterEfficiency}% • استهلاك داخلي: 45W</span>
+            <span className="text-[11px] text-slate-400">كفاءة التحويل الحالية: {show('inverterEfficiency', `${telemetry.inverterEfficiency}%`)} • استهلاك داخلي: 45W</span>
           </div>
         </div>
 
@@ -498,7 +502,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <Thermometer className={`w-4 h-4 ${telemetry.inverterTemp > 60 ? 'text-rose-400 animate-pulse' : 'text-slate-400'}`} />
             <span className="text-slate-400">الحرارة:</span>
             <span className={`font-bold ${telemetry.inverterTemp > 60 ? 'text-rose-400' : 'text-slate-200'}`}>
-              {telemetry.inverterTemp} °C
+              {show('inverterTemp', `${telemetry.inverterTemp} °C`)}
             </span>
           </div>
 
