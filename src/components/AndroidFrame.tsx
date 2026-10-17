@@ -106,7 +106,7 @@ export const AndroidFrame: React.FC<AndroidFrameProps> = ({
             ? 'max-w-[420px] rounded-[44px] border-[10px] border-slate-800 bg-slate-950 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] overflow-hidden relative'
             : 'max-w-4xl rounded-2xl sm:border border-slate-800/80 bg-slate-950 sm:shadow-2xl'
         }`}
-        style={{ minHeight: isPhoneFrame ? '860px' : 'auto' }}
+        style={isPhoneFrame ? { height: '860px' } : undefined}
       >
         {/* Android Native Status Bar */}
         <div className="w-full bg-slate-950/95 px-6 pt-3 pb-2 flex items-center justify-between text-xs font-mono text-slate-300 select-none border-b border-slate-800/40 z-30 sticky top-0 backdrop-blur-md">
@@ -150,7 +150,8 @@ export const AndroidFrame: React.FC<AndroidFrameProps> = ({
         </div>
 
         {/* Content Body */}
-        <main className="flex-1 flex flex-col overflow-y-auto">
+        {/* In phone-frame mode the screen scrolls inside the frame so the bottom nav (sticky) stays in it */}
+        <main className={`flex-1 flex flex-col min-h-0 ${isPhoneFrame ? 'overflow-y-auto' : ''}`}>
           {children}
         </main>
 

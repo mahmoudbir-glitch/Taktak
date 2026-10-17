@@ -56,10 +56,8 @@ export async function fetchRealSolarForecast(
 
     const data = await response.json();
 
-    const currentShortwave = data.current?.shortwave_radiation_instant || 0;
-    const currentTemp = Math.round(data.current?.temperature_2m || 30);
-    const currentWeatherCode = data.current?.weather_code || 0;
-    const currentCloud = data.current?.cloud_cover || 0;
+    const currentShortwave: number = data.current?.shortwave_radiation_instant ?? 0;
+    const currentWeatherCode: number = data.current?.weather_code ?? 0;
 
     const { type: currentWeatherType, label: weatherLabel } = mapWmoCodeToWeatherType(currentWeatherCode);
 
@@ -71,8 +69,10 @@ export async function fetchRealSolarForecast(
     const hourlyTemps: number[] = data.hourly?.temperature_2m || [];
     const hourlyCodes: number[] = data.hourly?.weather_code || [];
 
-    // Find current index matching current date/hour
-    const currentIsoPrefix = now.toISOString().slice(0, 13); // 'YYYY-MM-DDTHH'
+    // Hourly times are in the location's local timezone (timezone=auto), so match
+    // against the API's own "current.time" rather than the browser's UTC clock.
+    const currentIsoPrefix: string =
+      typeof data.current?.time === 'string' ? data.current.time.slice(0, 13) : now.toISOString().slice(0, 13);
     let currentIndex = hourlyTimes.findIndex(t => t.startsWith(currentIsoPrefix));
     if (currentIndex === -1) currentIndex = now.getHours();
 
@@ -87,13 +87,13 @@ export async function fetchRealSolarForecast(
       if (idx >= hourlyTimes.length) break;
 
       const timeStr = hourlyTimes[idx];
-      const rad = hourlyRadiation[idx] || 0; // W/m2
-      const cloud = hourlyCloud[idx] || 0;
-      const temp = Math.round(hourlyTemps[idx] || 28);
-      const code = hourlyCodes[idx] || 0;
+      const rad = hourlyRadiation[idx] ?? 0; // W/m2
+      const cloud = hourlyCloud[idx] ?? 0;
+      const temp = Math.round(hourlyTemps[idx] ?? 28);
+      const code = hourlyCodes[idx] ?? 0;
 
-      const dateObj = new Date(timeStr);
-      const hourVal = dateObj.getHours();
+      // "YYYY-MM-DDTHH:MM" in the location's local time; read the hour directly
+      const hourVal = Number(timeStr.slice(11, 13));
 
       // Standard Test Conditions: 1000 W/m2 generates rated capacity
       // Real AC derating: inverter efficiency ~97% + temp loss (-0.4%/°C above 25°C)
@@ -183,7 +183,7 @@ export async function searchCities(query: string): Promise<GeoLocation[]> {
     const data = await response.json();
     if (!data.results) return [];
 
-    return data.results.map((item: any) => ({
+    return data.results.map((item: { name: string; country?: string; admin1?: string; latitude: number; longitude: number }) => ({
       cityName: item.name,
       countryName: item.country || item.admin1 || '',
       latitude: item.latitude,

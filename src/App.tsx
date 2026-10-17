@@ -3,15 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  LayoutDashboard, BarChart3, Bell, Settings, 
-  Sun, Battery, Zap, AlertTriangle, RefreshCw
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { LayoutDashboard, BarChart3, Bell, Settings } from 'lucide-react';
 import { 
   SolarTelemetry, SmartAlert, InverterConnectionConfig, 
   AlertThresholds, HourlyStatsPoint, DailySummary, WeatherType, SolarForecastSummary,
-  FinancialTariffConfig, FinancialSavingsEstimate, SmartAppliance, GeoLocation 
+  FinancialTariffConfig, SmartAppliance, GeoLocation
 } from './types/solar';
 import { 
   INITIAL_TELEMETRY, INITIAL_CONFIG, 
@@ -21,6 +18,9 @@ import {
 } from './services/solarSim';
 import { DEFAULT_LOCATION, fetchRealSolarForecast, getUserGpsLocation } from './services/weatherApi';
 import { playAlertSound } from './services/sound';
+import {
+  SmartessSession, fetchSnapshot, loadSession, saveSession, snapshotToTelemetry
+} from './services/smartessClient';
 import { AndroidFrame } from './components/AndroidFrame';
 import { AndroidNotificationBanner } from './components/AndroidNotificationBanner';
 import { DashboardView } from './components/DashboardView';
@@ -61,8 +61,8 @@ export default function App() {
   const [alerts, setAlerts] = useState<SmartAlert[]>(INITIAL_ALERTS);
   const [activeBannerAlert, setActiveBannerAlert] = useState<SmartAlert | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [hourlyHistory, setHourlyHistory] = useState<HourlyStatsPoint[]>([]);
-  const [dailySummaries, setDailySummaries] = useState<DailySummary[]>([]);
+  const [hourlyHistory] = useState<HourlyStatsPoint[]>(() => generateHourlyHistory());
+  const [dailySummaries] = useState<DailySummary[]>(() => getDailySummaries(30));
   const [weatherOverride, setWeatherOverride] = useState<WeatherType>('sunny');
   const [forecast, setForecast] = useState<SolarForecastSummary>(() => generateSolarForecast(undefined, 'sunny'));
   const [location, setLocation] = useState<GeoLocation>(DEFAULT_LOCATION);
@@ -70,14 +70,14 @@ export default function App() {
   const [tariff, setTariff] = useState<FinancialTariffConfig>(DEFAULT_TARIFF_CONFIG);
   const [highContrast, setHighContrast] = useState(false);
   const [appliances, setAppliances] = useState<SmartAppliance[]>(INITIAL_APPLIANCES);
+  const [smartessSession, setSmartessSession] = useState<SmartessSession | null>(() => loadSession());
 
   // Prevent spamming the same alert repeatedly
   const lastAlertTimeRef = useRef<{ [key: string]: number }>({});
+  // Conditions that are currently active: an alert fires only when one becomes active
+  const activeConditionsRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    setHourlyHistory(generateHourlyHistory());
-    setDailySummaries(getDailySummaries());
-  }, []);
+  const isRealSmartess = config.mode === 'real_api' && config.brand === 'smartess';
 
   // Trigger Alert helper
   const triggerAlert = useCallback((
@@ -114,83 +114,108 @@ export default function App() {
     }
   }, [thresholds.audioChimeEnabled]);
 
+  const triggerAlertRef = useRef(triggerAlert);
+  useEffect(() => { triggerAlertRef.current = triggerAlert; }, [triggerAlert]);
+
+  const dismissBanner = useCallback(() => setActiveBannerAlert(null), []);
+
+  /**
+   * Edge-triggered condition: `fire` runs once when the condition becomes active,
+   * and the condition re-arms only after `cleared` is true (hysteresis).
+   */
+  const edge = useCallback((key: string, active: boolean, cleared: boolean, fire: () => void) => {
+    const set = activeConditionsRef.current;
+    if (active) {
+      if (!set.has(key)) {
+        set.add(key);
+        fire();
+      }
+    } else if (cleared) {
+      set.delete(key);
+    }
+  }, []);
+
   // Telemetry check for automated smart alerts
   const checkTelemetryForAlerts = useCallback((t: SolarTelemetry) => {
-    // 1. Blackout
-    if ((t.gridStatus === 'blackout' || t.gridStatus === 'islanded') && thresholds.gridBlackoutAlert) {
-      triggerAlert(
-        'grid_blackout',
-        'انقطاع شبكة الكهرباء العامة (Grid Blackout)',
-        'فصلت الشبكة العامة. قام العاكس بالتحويل تلقائياً إلى وضع الجزيرة المعزولة (Islanding) بالاعتماد على البطارية والألواح.',
-        'critical',
-        'Grid = 0.0V',
-        'يرجى ترشيد استهلاك المكيفات والأحمال الثقيلة للحفاظ على شحن البطارية.'
-      );
-    }
+    const set = activeConditionsRef.current;
 
-    // 2. Battery SOC
-    if (t.batterySoc <= thresholds.criticalBatterySoc) {
+    // 1. Blackout
+    const isBlackout = t.gridStatus === 'blackout' || t.gridStatus === 'islanded';
+    edge('grid_blackout', isBlackout && thresholds.gridBlackoutAlert, !isBlackout, () => triggerAlert(
+      'grid_blackout',
+      'انقطاع شبكة الكهرباء العامة (Grid Blackout)',
+      'فصلت الشبكة العامة. قام العاكس بالتحويل تلقائياً إلى وضع الجزيرة المعزولة (Islanding) بالاعتماد على البطارية والألواح.',
+      'critical',
+      'Grid = 0.0V',
+      'يرجى ترشيد استهلاك المكيفات والأحمال الثقيلة للحفاظ على شحن البطارية.'
+    ));
+
+    // 2. Battery SOC (2% hysteresis)
+    const soc = t.batterySoc;
+    edge('critical_battery', soc <= thresholds.criticalBatterySoc, soc > thresholds.criticalBatterySoc + 2, () => {
+      set.add('low_battery'); // the critical alert supersedes the low one
       triggerAlert(
         'critical_battery',
         'طاقة البطارية في مرحلة حرجة جداً!',
-        `انخفضت نسبة الشحن إلى ${Math.round(t.batterySoc)}%. يوشك النظام على الإغلاق لحماية خلايا الليثيوم.`,
+        `انخفضت نسبة الشحن إلى ${Math.round(soc)}%. يوشك النظام على الإغلاق لحماية خلايا البطارية.`,
         'critical',
-        `SOC = ${Math.round(t.batterySoc)}%`,
+        `SOC = ${Math.round(soc)}%`,
         'أوقف فوراً الأحمال غير الضرورية أو قم بتوصيل الشبكة/المولد.'
       );
-    } else if (t.batterySoc <= thresholds.lowBatterySoc) {
-      triggerAlert(
-        'low_battery',
-        'تنبيه: انخفاض سعة شحن البطارية',
-        `نسبة شحن البطارية وصلت إلى ${Math.round(t.batterySoc)}%، وهي أدنى من الحد الآمن المحدد (${thresholds.lowBatterySoc}%).`,
-        'warning',
-        `SOC = ${Math.round(t.batterySoc)}%`,
-        'راقب تفريغ البطارية أو فعّل وضع توفير الطاقة.'
-      );
-    }
+    });
+    edge('low_battery', soc <= thresholds.lowBatterySoc, soc > thresholds.lowBatterySoc + 2, () => triggerAlert(
+      'low_battery',
+      'تنبيه: انخفاض سعة شحن البطارية',
+      `نسبة شحن البطارية وصلت إلى ${Math.round(soc)}%، وهي أدنى من الحد الآمن المحدد (${thresholds.lowBatterySoc}%).`,
+      'warning',
+      `SOC = ${Math.round(soc)}%`,
+      'راقب تفريغ البطارية أو فعّل وضع توفير الطاقة.'
+    ));
 
-    // 3. Inverter Temp
-    if (t.inverterTemp >= thresholds.criticalInverterTemp) {
+    // 3. Inverter Temp (3°C hysteresis)
+    const temp = t.inverterTemp;
+    edge('critical_temp', temp >= thresholds.criticalInverterTemp, temp < thresholds.criticalInverterTemp - 3, () => {
+      set.add('high_temp');
       triggerAlert(
         'critical_temp',
         'خطر: ارتفاع حرارة محول الطاقة لمستوى حرج!',
-        `درجة حرارة المحول بلغت ${t.inverterTemp}°C. قد يحدث خفض تلقائي للقدرة (Derating) أو إيقاف طارئ.`,
+        `درجة حرارة المحول بلغت ${temp}°C. قد يحدث خفض تلقائي للقدرة (Derating) أو إيقاف طارئ.`,
         'critical',
-        `Temp = ${t.inverterTemp}°C`,
+        `Temp = ${temp}°C`,
         'تأكد من سلامة تهوية غرفة المحول وعدم انسداد فتحات مراوح التبريد.'
       );
-    } else if (t.inverterTemp >= thresholds.highInverterTemp) {
-      triggerAlert(
-        'high_temp',
-        'تحذير: ارتفاع حرارة المحول الشمسي',
-        `سجل المحول حرارة تشغيلية ${t.inverterTemp}°C (الحد الأقصى ${thresholds.highInverterTemp}°C).`,
-        'warning',
-        `Temp = ${t.inverterTemp}°C`,
-        'تم رفع سرعة مراوح التبريد إلى أقصى طاقة.'
-      );
-    }
+    });
+    edge('high_temp', temp >= thresholds.highInverterTemp, temp < thresholds.highInverterTemp - 3, () => triggerAlert(
+      'high_temp',
+      'تحذير: ارتفاع حرارة المحول الشمسي',
+      `سجل المحول حرارة تشغيلية ${temp}°C (الحد الأقصى ${thresholds.highInverterTemp}°C).`,
+      'warning',
+      `Temp = ${temp}°C`,
+      'تم رفع سرعة مراوح التبريد إلى أقصى طاقة.'
+    ));
 
-    // 4. Overload
-    if (t.loadPower >= thresholds.highLoadThresholdKw) {
-      triggerAlert(
-        'high_load',
-        'حمل استهلاك كهربائي مرتفع جداً',
-        `أحمال المنزل تستهلك ${t.loadPower.toFixed(2)} kW مقتربة من سعة العاكس القصوى.`,
-        'warning',
-        `Load = ${t.loadPower.toFixed(2)} kW`,
-        'تجنب تشغيل أجهزة كهربائية ثقيلة في نفس اللحظة.'
-      );
-    }
-  }, [thresholds, triggerAlert]);
+    // 4. Overload (0.3 kW hysteresis)
+    const load = t.loadPower;
+    edge('high_load', load >= thresholds.highLoadThresholdKw, load < thresholds.highLoadThresholdKw - 0.3, () => triggerAlert(
+      'high_load',
+      'حمل استهلاك كهربائي مرتفع جداً',
+      `أحمال المنزل تستهلك ${load.toFixed(2)} kW مقتربة من سعة العاكس القصوى.`,
+      'warning',
+      `Load = ${load.toFixed(2)} kW`,
+      'تجنب تشغيل أجهزة كهربائية ثقيلة في نفس اللحظة.'
+    ));
+  }, [thresholds, triggerAlert, edge]);
 
   // Dynamic Polling Loop with Smart Eco Mode
   const isEcoActive = Boolean(
-    config.smartEcoModeEnabled && 
+    config.smartEcoModeEnabled &&
     telemetry.batterySoc <= (config.smartEcoBatteryThreshold || 20)
   );
-  const effectivePollInterval = isEcoActive 
-    ? (config.smartEcoPollIntervalSec || 30) 
+  const basePollInterval = isEcoActive
+    ? (config.smartEcoPollIntervalSec || 30)
     : (config.pollIntervalSec || 5);
+  // The SmartESS cloud only refreshes every few minutes; polling faster just wastes requests.
+  const effectivePollInterval = isRealSmartess ? Math.max(60, basePollInterval) : basePollInterval;
 
   const handleUpdateAppliance = useCallback((updated: SmartAppliance) => {
     setAppliances(prev => prev.map(a => a.id === updated.id ? updated : a));
@@ -205,79 +230,130 @@ export default function App() {
     setAppliances(prev => prev.filter(a => a.id !== id));
   }, []);
 
+  // One polling tick: simulator step, or a real SmartESS reading
+  const pollNowRef = useRef<() => void>(() => {});
+
+  const wasRealRef = useRef(false);
+
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTelemetry(prev => {
-        const next = calculateNextTelemetry(prev);
-        checkTelemetryForAlerts(next);
+    let cancelled = false;
 
-        // Smart Surplus Appliance Automation Check
-        setAppliances(currentApps => {
-          const { updatedAppliances, events } = evaluateSmartAppliances(currentApps, next);
-          events.forEach(ev => {
-            if (ev.action === 'started') {
-              triggerAlert(
-                `app_auto_${ev.applianceName}`,
-                `تشغيل ذكي: ${ev.applianceName}`,
-                ev.reason,
-                'info',
-                'فائض طاقة شمسية مجانية'
-              );
-            }
-          });
-          return updatedAppliances;
-        });
+    // Entering real mode: drop the simulator's daily counters so they don't mix with real data
+    if (isRealSmartess && !wasRealRef.current) {
+      setTelemetry(prev => ({
+        ...prev,
+        timestamp: new Date().toISOString(),
+        loadTodayKwh: 0,
+        gridTodayImportKwh: 0,
+        gridTodayExportKwh: 0,
+        pvPeakTodayKw: 0,
+      }));
+    }
+    wasRealRef.current = isRealSmartess;
 
-        return next;
-      });
-    }, effectivePollInterval * 1000);
+    const tick = async () => {
+      if (!isRealSmartess) {
+        setTelemetry(prev => calculateNextTelemetry(prev, undefined, effectivePollInterval));
+        return;
+      }
+      try {
+        const snapshot = await fetchSnapshot(smartessSession);
+        if (cancelled) return;
+        const capacity = config.batteryCapacityKwh || 4.8;
+        setTelemetry(prev => snapshotToTelemetry(snapshot, prev, capacity));
+        setConfig(prev => prev.connectionStatus === 'connected' && !prev.lastError
+          ? prev
+          : { ...prev, connectionStatus: 'connected', lastError: null, lastConnectedTime: new Date().toISOString() });
+        activeConditionsRef.current.delete('smartess_error');
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'تعذر جلب بيانات SmartESS';
+        setConfig(prev => ({ ...prev, connectionStatus: 'failed', lastError: message }));
+        edge('smartess_error', true, false, () => triggerAlertRef.current(
+          'smartess_error',
+          'تعذر جلب البيانات من SmartESS',
+          message,
+          'warning',
+          'SmartESS Cloud',
+          'تحقق من تسجيل الدخول في الإعدادات ومن اتصال جهاز جمع البيانات (Datalogger) بالإنترنت.'
+        ));
+      }
+    };
 
-    return () => clearInterval(timer);
-  }, [effectivePollInterval, checkTelemetryForAlerts, triggerAlert]);
+    pollNowRef.current = () => { void tick(); };
+    if (isRealSmartess) void tick(); // fetch immediately instead of waiting a full interval
+    const timer = setInterval(() => void tick(), effectivePollInterval * 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [effectivePollInterval, isRealSmartess, smartessSession, config.batteryCapacityKwh, edge]);
+
+  // Alerts run outside the state updater, once per new reading
+  useEffect(() => {
+    checkTelemetryForAlerts(telemetry);
+  }, [telemetry, checkTelemetryForAlerts]);
+
+  // Smart surplus appliance automation, once per new reading
+  const appliancesRef = useRef(appliances);
+  useEffect(() => { appliancesRef.current = appliances; }, [appliances]);
+
+  useEffect(() => {
+    const { updatedAppliances, events } = evaluateSmartAppliances(
+      appliancesRef.current,
+      telemetry,
+      effectivePollInterval / 60
+    );
+    setAppliances(updatedAppliances);
+    events
+      .filter(ev => ev.action === 'started')
+      .forEach(ev => triggerAlertRef.current(
+        `app_auto_${ev.applianceName}`,
+        `تشغيل ذكي: ${ev.applianceName}`,
+        ev.reason,
+        'info',
+        'فائض طاقة شمسية مجانية'
+      ));
+    // Only re-evaluate when a new reading arrives
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [telemetry]);
+
+  // Weather: one request at a time; responses for an older location are ignored
+  const weatherRequestRef = useRef(0);
+  const loadForecast = useCallback(async (loc: GeoLocation): Promise<SolarForecastSummary | null> => {
+    const requestId = ++weatherRequestRef.current;
+    setIsLoadingWeather(true);
+    try {
+      const res = await fetchRealSolarForecast(loc);
+      if (requestId !== weatherRequestRef.current) return null;
+      setForecast(res);
+      setWeatherOverride(res.currentWeather);
+      return res;
+    } finally {
+      if (requestId === weatherRequestRef.current) setIsLoadingWeather(false);
+    }
+  }, []);
 
   // Initial weather load from real Open-Meteo API
   useEffect(() => {
-    let active = true;
-    setIsLoadingWeather(true);
-    fetchRealSolarForecast(location)
-      .then(res => {
-        if (active) {
-          setForecast(res);
-          setWeatherOverride(res.currentWeather);
-        }
-      })
-      .catch(err => {
-        console.warn('Weather fetch error:', err);
-      })
-      .finally(() => {
-        if (active) setIsLoadingWeather(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [location]);
+    void loadForecast(DEFAULT_LOCATION);
+  }, [loadForecast]);
 
   const handleLocationChange = async (newLoc: GeoLocation) => {
     setLocation(newLoc);
-    setIsLoadingWeather(true);
-    try {
-      const res = await fetchRealSolarForecast(newLoc);
-      setForecast(res);
-      setWeatherOverride(res.currentWeather);
-      playAlertSound('success');
-      triggerAlert(
-        'loc_changed',
-        `تحديث الموقع: ${newLoc.cityName}`,
-        `تم ربط توقعات الطاقة الشمسية بمحطة رصد ${newLoc.cityName} (${newLoc.countryName}) واستقبال الإشعاع الشمسي الحي.`,
-        'info',
-        `${res.currentIrradianceWm2 || 0} W/m²`
-      );
-    } catch {
-      // Fallback handled in weatherApi
-    } finally {
-      setIsLoadingWeather(false);
-    }
+    const res = await loadForecast(newLoc);
+    if (!res) return;
+    playAlertSound('success');
+    triggerAlert(
+      'loc_changed',
+      `تحديث الموقع: ${newLoc.cityName}`,
+      res.source === 'live_api'
+        ? `تم ربط توقعات الطاقة الشمسية بمحطة رصد ${newLoc.cityName} (${newLoc.countryName}) واستقبال الإشعاع الشمسي الحي.`
+        : `تعذر الوصول لخدمة الطقس؛ تُعرض توقعات تقديرية لـ ${newLoc.cityName}.`,
+      'info',
+      `${res.currentIrradianceWm2 ?? 0} W/m²`
+    );
   };
 
   const handleRequestGps = async () => {
@@ -285,18 +361,18 @@ export default function App() {
     try {
       const gpsLoc = await getUserGpsLocation();
       setLocation(gpsLoc);
-      const res = await fetchRealSolarForecast(gpsLoc);
-      setForecast(res);
-      setWeatherOverride(res.currentWeather);
+      const res = await loadForecast(gpsLoc);
+      if (!res) return;
       playAlertSound('success');
       triggerAlert(
         'gps_loc',
         'تم تحديد الموقع الجغرافي بنجاح (GPS)',
         `تم رصد إحداثياتك (${gpsLoc.latitude}°, ${gpsLoc.longitude}°) وجلب الإشعاع الشمسي المباشر بنجاح.`,
         'info',
-        `إشعاع: ${res.currentIrradianceWm2 || 0} W/m²`
+        `إشعاع: ${res.currentIrradianceWm2 ?? 0} W/m²`
       );
     } catch (err: unknown) {
+      setIsLoadingWeather(false);
       const errorMsg = err instanceof Error ? err.message : 'تعذر تحديد الموقع الجغرافي';
       triggerAlert(
         'gps_err',
@@ -304,91 +380,64 @@ export default function App() {
         `${errorMsg}. يمكنك اختيار مدينتك يدوياً من قائمة المدن.`,
         'warning'
       );
-    } finally {
-      setIsLoadingWeather(false);
     }
   };
 
   const handleRefreshWeather = async () => {
-    setIsLoadingWeather(true);
-    try {
-      const res = await fetchRealSolarForecast(location);
-      setForecast(res);
-      setWeatherOverride(res.currentWeather);
-      playAlertSound('success');
-    } finally {
-      setIsLoadingWeather(false);
-    }
+    const res = await loadForecast(location);
+    if (res) playAlertSound('success');
   };
 
   const handleWeatherChange = (newWeather: WeatherType) => {
     setWeatherOverride(newWeather);
-    setForecast(generateSolarForecast(undefined, newWeather));
+    setForecast({
+      ...generateSolarForecast(undefined, newWeather),
+      locationName: `${location.cityName} (محاكاة يدوية)`,
+      source: 'fallback',
+      lastUpdated: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+    });
   };
 
   // Manual Refresh
   const handleManualRefresh = () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setTelemetry(prev => {
-        const next = calculateNextTelemetry(prev);
-        checkTelemetryForAlerts(next);
-        return next;
-      });
-      handleRefreshWeather();
-      setIsRefreshing(false);
-      playAlertSound('success');
-    }, 500);
+    pollNowRef.current();
+    void handleRefreshWeather();
+    setTimeout(() => setIsRefreshing(false), 500);
   };
 
-  // Simulation Lab Triggers
+  // Simulation Lab Triggers (alerts fire from the telemetry effect)
   const handleTriggerSimEvent = (eventType: 'blackout' | 'low_battery' | 'high_temp' | 'overload' | 'reset') => {
     if (eventType === 'blackout') {
-      setTelemetry(prev => {
-        const next = {
-          ...prev,
-          gridStatus: 'blackout' as const,
-          gridPower: 0,
-          gridVoltage: 0,
-          gridFrequency: 0,
-        };
-        checkTelemetryForAlerts(next);
-        return next;
-      });
+      setTelemetry(prev => ({
+        ...prev,
+        gridStatus: 'blackout',
+        gridPower: 0,
+        gridVoltage: 0,
+        gridFrequency: 0,
+      }));
     } else if (eventType === 'low_battery') {
-      setTelemetry(prev => {
-        const next = {
-          ...prev,
-          batterySoc: 12,
-          batteryVoltage: 48.2,
-          batteryRemainingHours: 1.1,
-          batteryPower: -2.4,
-        };
-        checkTelemetryForAlerts(next);
-        return next;
-      });
+      setTelemetry(prev => ({
+        ...prev,
+        batterySoc: 12,
+        batteryVoltage: 48.2,
+        batteryRemainingHours: 1.1,
+        batteryPower: -2.4,
+      }));
     } else if (eventType === 'high_temp') {
-      setTelemetry(prev => {
-        const next = {
-          ...prev,
-          inverterTemp: 72.4,
-          fanSpeedPercent: 100,
-        };
-        checkTelemetryForAlerts(next);
-        return next;
-      });
+      setTelemetry(prev => ({
+        ...prev,
+        inverterTemp: 72.4,
+        fanSpeedPercent: 100,
+      }));
     } else if (eventType === 'overload') {
-      setTelemetry(prev => {
-        const next = {
-          ...prev,
-          loadPower: 7.45,
-          heavyLoadPower: 6.2,
-        };
-        checkTelemetryForAlerts(next);
-        return next;
-      });
+      setTelemetry(prev => ({
+        ...prev,
+        loadPower: 7.45,
+        heavyLoadPower: 6.2,
+      }));
     } else if (eventType === 'reset') {
-      setTelemetry(INITIAL_TELEMETRY);
+      setTelemetry({ ...INITIAL_TELEMETRY, timestamp: new Date().toISOString() });
       playAlertSound('success');
     }
   };
@@ -416,6 +465,13 @@ export default function App() {
     }
   };
 
+  const handleSmartessSessionChange = useCallback((session: SmartessSession | null) => {
+    saveSession(session);
+    setSmartessSession(session);
+  }, []);
+
+  const savings = useMemo(() => calculateFinancialSavings(telemetry, tariff), [telemetry, tariff]);
+
   const unacknowledgedCount = alerts.filter(a => !a.acknowledged).length;
 
   return (
@@ -432,19 +488,19 @@ export default function App() {
       {/* Native Android Dropping Push Banner */}
       <AndroidNotificationBanner
         alert={activeBannerAlert}
-        onDismiss={() => setActiveBannerAlert(null)}
+        onDismiss={dismissBanner}
         onViewAlerts={() => setCurrentTab('alerts')}
       />
 
       {/* Main Tab Screen Content */}
-      <div className="flex-1 pb-20">
+      <div className="flex-1 pb-4">
         {currentTab === 'dashboard' && (
           <DashboardView
             telemetry={telemetry}
             forecast={forecast}
             location={location}
             isLoadingWeather={isLoadingWeather}
-            savings={calculateFinancialSavings(telemetry, tariff)}
+            savings={savings}
             tariff={tariff}
             appliances={appliances}
             isEcoActive={isEcoActive}
@@ -470,7 +526,7 @@ export default function App() {
             dailySummaries={dailySummaries}
             telemetry={telemetry}
             tariff={tariff}
-            savings={calculateFinancialSavings(telemetry, tariff)}
+            savings={savings}
           />
         )}
 
@@ -491,6 +547,8 @@ export default function App() {
           <InverterSettingsView
             config={config}
             batterySoc={telemetry.batterySoc}
+            smartessSession={smartessSession}
+            onSmartessSessionChange={handleSmartessSessionChange}
             highContrast={highContrast}
             onToggleHighContrast={() => {
               setHighContrast(prev => !prev);
@@ -505,7 +563,7 @@ export default function App() {
       </div>
 
       {/* Android Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-4xl mx-auto z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 px-2 py-1.5 flex items-center justify-around select-none">
+      <nav className="sticky bottom-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 px-2 py-1.5 flex items-center justify-around select-none">
         {/* Tab 1: Dashboard */}
         <button
           onClick={() => setCurrentTab('dashboard')}
