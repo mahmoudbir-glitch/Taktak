@@ -90,7 +90,7 @@ export const Button: React.FC<
 > = ({ variant = 'primary', className = '', ...props }) => (
   <button
     {...props}
-    className={`h-12 px-5 rounded-2xl text-sm font-extrabold transition disabled:opacity-50 active:scale-[0.99] ${
+    className={`inline-flex h-12 items-center justify-center gap-2 px-5 rounded-2xl text-sm font-extrabold transition disabled:opacity-50 active:scale-[0.99] ${
       variant === 'primary'
         ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-[0_8px_20px_rgba(15,23,42,0.18)]'
         : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
@@ -153,3 +153,77 @@ export const Ring: React.FC<{ value: number | null; size?: number; color: string
     </div>
   );
 };
+
+/** Card heading with a coloured icon box, title and optional subtitle */
+export const CardHead: React.FC<{ icon: React.ReactNode; title: string; subtitle?: string; tone: Accent; right?: React.ReactNode }> = ({
+  icon, title, subtitle, tone, right,
+}) => (
+  <div className="flex items-center gap-3">
+    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ring-1 ${accent[tone].chip} ${accent[tone].text}`}>{icon}</span>
+    <div className="min-w-0 flex-1">
+      <h2 className="text-sm font-black text-slate-900">{title}</h2>
+      {subtitle && <p className="truncate text-[11px] font-bold text-slate-500">{subtitle}</p>}
+    </div>
+    {right}
+  </div>
+);
+
+/**
+ * Collapsible card: the header row is always visible; the body opens and
+ * closes with a tap. Built on <details>, so it works without JavaScript.
+ */
+export const Collapsible: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  tone: Accent;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}> = ({ icon, title, subtitle, tone, defaultOpen = false, children }) => (
+  <details className="energy-card group overflow-hidden" open={defaultOpen}>
+    <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ring-1 ${accent[tone].chip} ${accent[tone].text}`}>{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-black text-slate-900">{title}</span>
+        {subtitle && <span className="block truncate text-[11px] font-bold text-slate-500">{subtitle}</span>}
+      </span>
+      <svg viewBox="0 0 20 20" className="h-5 w-5 shrink-0 text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true">
+        <path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </summary>
+    <div className="border-t border-slate-100 px-4 pb-4 pt-1">{children}</div>
+  </details>
+);
+
+/** Tinted number box: small label, big value, optional unit and foot */
+export const StatBox: React.FC<{ label: string; value: string; unit?: string; tone: Accent; foot?: React.ReactNode }> = ({
+  label, value, unit, tone, foot,
+}) => {
+  const bg: Record<Accent, string> = {
+    sun: 'bg-amber-50', battery: 'bg-emerald-50', home: 'bg-sky-50', grid: 'bg-violet-50', money: 'bg-teal-50', neutral: 'bg-slate-50',
+  };
+  const fg: Record<Accent, string> = {
+    sun: 'text-amber-700', battery: 'text-emerald-700', home: 'text-sky-700', grid: 'text-violet-700', money: 'text-teal-700', neutral: 'text-slate-900',
+  };
+  return (
+    <div className={`flex min-w-0 flex-col rounded-2xl p-3.5 ${bg[tone]}`}>
+      <span className="truncate text-[11px] font-bold text-slate-500">{label}</span>
+      <strong className={`mt-1 block whitespace-nowrap text-xl font-black leading-7 ${fg[tone]}`}>
+        <bdi dir="auto">{value}{unit && <small className="text-xs font-extrabold"> {unit}</small>}</bdi>
+      </strong>
+      {foot && <span className="mt-1 text-[11px] font-semibold text-slate-500">{foot}</span>}
+    </div>
+  );
+};
+
+/** Key/value list inside a card or collapsible */
+export const InfoList: React.FC<{ rows: [string, React.ReactNode][] }> = ({ rows }) => (
+  <dl className="divide-y divide-slate-100 text-[13px]">
+    {rows.map(([label, value]) => (
+      <div key={label} className="flex items-start justify-between gap-3 py-2.5">
+        <dt className="shrink-0 font-bold text-slate-500">{label}</dt>
+        <dd className="text-left font-black text-slate-800"><bdi>{value}</bdi></dd>
+      </div>
+    ))}
+  </dl>
+);

@@ -12,8 +12,14 @@ export const kw = (w: number | null | undefined) => (w == null ? DASH : (w / 100
 
 export const num = (v: number | null | undefined, digits = 0) => (v == null ? DASH : v.toFixed(digits));
 
+/** Arabic labels, Latin (0-9) digits everywhere */
+export const LOCALE = 'ar-LB-u-nu-latn';
+
 export const timeOf = (ms: number) =>
-  new Date(ms).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+  new Date(ms).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+
+export const dateOf = (ms: number) =>
+  new Date(ms).toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
 
 /** Hours of backup at the current discharge rate, or null when not discharging */
 export function backupHours(s: SmartessSnapshot, capacityKwh: number): number | null {
@@ -27,3 +33,6 @@ export function formatHours(h: number): string {
   const minutes = Math.round((h - hours) * 60);
   return hours > 0 ? `${hours} س ${minutes} د` : `${minutes} دقيقة`;
 }
+
+/** Keep a Latin number+unit ("5 kW") in order inside Arabic text */
+export const ltr = (s: string | number) => `⁦${s}⁩`;
