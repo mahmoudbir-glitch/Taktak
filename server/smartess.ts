@@ -58,6 +58,10 @@ export interface SmartessSnapshot {
   energyTodayKwh: number | null;
   workingState: string | null;
   faulted: boolean;
+  /** Live energy-flow parameters and both timestamps, for mapping new models */
+  rawFlow: { id: string; val: string; unit?: string }[];
+  gts: string | null;
+  flowDate: string | null;
   /** Every parameter the inverter reported, for mapping new models */
   raw: { id: string; name?: string; val: string; unit?: string }[];
 }
@@ -248,6 +252,16 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
   const g = (id: string) => p.get(id);
   const flowItem = (group: string, par: string) =>
     (Array.isArray(flow?.[group]) ? (flow![group] as ParItem[]) : []).find((i) => i.par === par);
+  // Energy flow is the live view (what the SmartESS app's home screen shows); search it by name
+  const flowGroups = Object.entries(flow ?? {}).filter(([, v]) => Array.isArray(v)) as [string, ParItem[]][];
+  const flowFind = (group: RegExp, par: RegExp) => {
+    for (const [name, items] of flowGroups) {
+      if (!group.test(name)) continue;
+      const hit = items.find((i) => typeof i.par === 'string' && par.test(i.par));
+      if (hit) return hit;
+    }
+    return undefined;
+  };
   const row = rows?.device?.find((d) => String(d.sn) === device.sn) ?? rows?.device?.[0];
 
   const batteryVoltage = num(g('bt_battery_voltage'));
@@ -256,6 +270,7 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
   const batteryCurrentA = chargeA ? chargeA : dischargeA ? -dischargeA : chargeA ?? dischargeA;
   const batteryPowerW = firstNum(
     watts(flowItem('bt_status', 'battery_active_power')),
+    watts(flowFind(/^bt/, /power/i)),
     batteryVoltage !== null && batteryCurrentA !== null ? Math.round(batteryVoltage * batteryCurrentA) : null,
   );
 
@@ -265,23 +280,27 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
     gridVoltage !== null ? gridVoltage > 150 : mains ? /ok|normal|connect/i.test(mains) : null;
 
   const workingState = (g('sy_status')?.val as string | undefined) ?? null;
+  const flowPv = firstNum(watts(flowItem('pv_status', 'pv_output_power')), watts(flowFind(/^pv/, /power/i)));
+  const flowLoad = firstNum(watts(flowItem('bc_status', 'load_active_power')), watts(flowFind(/^(bc|load)/, /active_power|power/i)));
+  const liveFromFlow = flowPv !== null || flowLoad !== null;
+  const flowDate = typeof flow?.date === 'string' ? flow.date : null;
   const flowStatus = Number(flow?.status);
   const online = Number.isFinite(flowStatus) ? flowStatus === 0 : row ? Number(row.status) === 0 : true;
 
   return {
     deviceName: device.name,
     online,
-    // gts = when the datalogger sent this data; the energy-flow "date" is just the server's current time
-    updatedAt: last?.gts ?? (typeof flow?.date === 'string' ? flow.date : null) ?? null,
-    pvPowerW: firstNum(watts(g('pv_output_power')), watts(flowItem('pv_status', 'pv_output_power'))),
+    // gts = when the last-data parameters were sent; the energy flow carries its own date
+    updatedAt: liveFromFlow && flowDate ? flowDate : last?.gts ?? flowDate ?? null,
+    pvPowerW: firstNum(flowPv, watts(g('pv_output_power'))),
     pvVoltage: firstNum(num(g('pv_input_voltage')), num(g('pv_output_voltage'))),
     pvCurrent: num(g('pv_input_current')),
-    batterySoc: firstNum(num(g('bt_battery_capacity')), num(g('bt_battery_soc')), num(g('bt_state_of_charge'))),
+    batterySoc: firstNum(num(flowFind(/^bt/, /capacity|soc/i)), num(g('bt_battery_capacity')), num(g('bt_battery_soc')), num(g('bt_state_of_charge'))),
     batteryVoltage,
     batteryPowerW,
     batteryCurrentA,
     loadPowerW: firstNum(
-      watts(flowItem('bc_status', 'load_active_power')),
+      flowLoad,
       watts(g('bc_output_active_power')),
       watts(g('bc_output_apparent_power')),
     ),
@@ -294,6 +313,10 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
     energyTodayKwh: row?.energyToday !== undefined && Number.isFinite(Number(row.energyToday)) ? Number(row.energyToday) : null,
     workingState,
     faulted: /fault|error|abnormal/i.test(workingState ?? ''),
+    rawFlow: flowGroups.flatMap(([group, items]) =>
+      items.slice(0, 20).map((i) => ({ id: `${group}.${i.par ?? i.id ?? '?'}`, val: String(i.val ?? ''), unit: i.unit || undefined }))),
+    gts: last?.gts ?? null,
+    flowDate,
     raw: [...p.entries()].slice(0, 150).map(([id, item]) => ({
       id,
       name: typeof item.par === 'string' && item.par !== id ? item.par : undefined,

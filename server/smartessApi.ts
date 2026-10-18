@@ -139,6 +139,16 @@ async function route(body: unknown): Promise<HandlerResult> {
           if (!device) throw new SmartessError('لا يوجد جهاز مرتبط بحساب SmartESS', 'NO_DEVICE');
           return getSnapshot(auth, device);
         });
+        // Inverter readings (no credentials) so the field mapping can be checked against the SmartESS app
+        console.log(JSON.stringify({
+          smartessReading: {
+            gts: snapshot.gts, flowDate: snapshot.flowDate,
+            pv: snapshot.pvPowerW, soc: snapshot.batterySoc, batt: snapshot.batteryPowerW, load: snapshot.loadPowerW,
+            grid: snapshot.gridConnected, today: snapshot.energyTodayKwh,
+            flow: snapshot.rawFlow.slice(0, 40),
+            pars: snapshot.raw.slice(0, 80).map((r) => `${r.id}=${r.val}${r.unit ?? ''}`),
+          },
+        }));
         return { status: 200, body: { snapshot } };
       }
 
