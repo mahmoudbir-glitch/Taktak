@@ -17,9 +17,13 @@ interface HomeViewProps {
   needsLogin: boolean;
   settings: AppSettings;
   onLoggedIn: (session: SmartessSession, devices: SmartessDevice[]) => void;
+  onOpenBattery: () => void;
+  onOpenForecast: () => void;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ snapshot: s, error, needsLogin, settings, onLoggedIn }) => {
+export const HomeView: React.FC<HomeViewProps> = ({
+  snapshot: s, error, needsLogin, settings, onLoggedIn, onOpenBattery, onOpenForecast,
+}) => {
   if (needsLogin) {
     return (
       <Card title="ربط المحول">
@@ -62,6 +66,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ snapshot: s, error, needsLog
         <Tile
           label="الألواح"
           icon={<Sun className="w-4 h-4" />}
+          onClick={onOpenForecast}
           value={kw(s.pvPowerW)}
           unit="kW"
           note={s.energyTodayKwh != null ? `اليوم ${s.energyTodayKwh.toFixed(1)} kWh` : undefined}
@@ -69,6 +74,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ snapshot: s, error, needsLog
         <Tile
           label="البطارية"
           icon={<BatteryMedium className="w-4 h-4" />}
+          onClick={onOpenBattery}
           value={num(s.batterySoc)}
           unit="%"
           note={batteryNote}
