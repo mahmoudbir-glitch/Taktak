@@ -1,5 +1,5 @@
 {
-  "name": "Taqati",
+  "name": "Taktak",
   "description": "تطبيق أندرويد ذكي لمراقبة نظام الطاقة الشمسية عبر الربط التلقائي بمحول الطاقة، بمخطط تفاعلي لحظي وإحصائيات وتنبيهات للحالات الحرجة.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

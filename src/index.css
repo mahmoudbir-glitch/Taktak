@@ -6,7 +6,17 @@
   }
   body {
     font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    background: #f3f7f6;
+    background: #f4f6fc;
     color: #0f172a;
   }
+}
+
+html, body { overscroll-behavior-y: none; }
+
+/* Card, as in Solar: white, soft border and an indigo-tinted shadow */
+.energy-card {
+  border: 1px solid rgba(219, 225, 240, 0.9);
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 40px rgba(77, 71, 224, 0.07);
 }

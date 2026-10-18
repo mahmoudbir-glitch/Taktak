@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BatteryMedium, Bell, CloudSun, Coins, Home, RefreshCw, Settings } from 'lucide-react';
+import { BatteryFull, Bell, CloudSun, Coins, Home, LayoutGrid, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import {
   SmartessClientError, SmartessDevice, SmartessSession, SmartessSnapshot,
   fetchSnapshot, getServerConfig, loadSession, parseSmartessTime, saveSession,
@@ -162,75 +162,54 @@ export default function App() {
     : !snapshot.online || stale || error ? { dot: 'bg-amber-500', text: readingText }
     : { dot: 'bg-emerald-500', text: readingText };
 
-  const iconBtn = (state: string) =>
-    `w-10 h-10 flex items-center justify-center rounded-xl transition disabled:opacity-50 ${
-      state === 'active' ? 'bg-teal-700 text-white' : 'bg-white text-slate-600 border border-[#dde6e4]'
-    }`;
+  const isLive = Boolean(snapshot && snapshot.online && !stale && !error);
 
-  const navItem = (id: Tab, label: string, Icon: typeof Home) => (
-    <button
-      type="button"
-      onClick={() => setTab(id)}
-      className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-xl text-[11px] font-bold transition ${
-        tab === id ? 'bg-teal-50 text-teal-800' : 'text-slate-400'
-      }`}
-    >
-      <Icon className="w-5 h-5" />
-      {label}
-    </button>
-  );
+  // One colour per page, like the tab that opens it (header gradient, tab line, icon)
+  const TABS: { id: Tab; label: string; Icon: typeof Home; line: string; text: string; grad: string }[] = [
+    { id: 'home', label: 'الرئيسية', Icon: LayoutGrid, line: 'border-indigo-500', text: 'text-indigo-600', grad: 'from-indigo-400 to-indigo-600' },
+    { id: 'battery', label: 'البطارية', Icon: BatteryFull, line: 'border-emerald-500', text: 'text-emerald-600', grad: 'from-emerald-500 to-emerald-700' },
+    { id: 'forecast', label: 'التوقعات', Icon: CloudSun, line: 'border-amber-500', text: 'text-amber-600', grad: 'from-amber-500 to-orange-600' },
+    { id: 'savings', label: 'التوفير', Icon: Coins, line: 'border-teal-500', text: 'text-teal-600', grad: 'from-teal-500 to-teal-700' },
+    { id: 'settings', label: 'الإعدادات', Icon: SlidersHorizontal, line: 'border-rose-500', text: 'text-rose-600', grad: 'from-rose-400 to-rose-600' },
+  ];
+  const headerGrad = TABS.find((t) => t.id === tab)?.grad ?? 'from-slate-500 to-slate-700';
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f3f7f6] text-slate-900">
-      <header className="sticky top-0 z-10 bg-[#f3f7f6]/90 backdrop-blur-md">
-        <div className="max-w-md mx-auto px-4 pt-4 pb-3 flex items-center justify-between">
-          <button type="button" onClick={() => setTab('home')} className="flex items-center gap-2.5 text-start">
-            <Logo size={38} />
-            <span>
-              <span className="block text-lg leading-tight font-black tracking-tight">Taqati</span>
-              <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
-                <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
-                {status.text}
+    <div className="min-h-screen w-full bg-[linear-gradient(165deg,#eef4ff_0%,#f4f6fc_40%,#effaf6_72%,#fff8e5_100%)] text-slate-900">
+      <header className={`sticky top-0 z-40 rounded-b-[1.5rem] bg-gradient-to-l pt-[env(safe-area-inset-top)] text-white shadow-[0_8px_24px_rgba(15,23,42,0.14)] transition-colors ${headerGrad}`}>
+        <div className="mx-auto flex min-h-[4.5rem] max-w-md items-center justify-between gap-3 px-3 py-2.5">
+          <button type="button" onClick={() => setTab('home')} className="flex min-w-0 items-center gap-2.5 text-start" aria-label="Taktak">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/90 shadow-sm"><Logo size={34} /></span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-2">
+                <span className="truncate text-xl font-black leading-tight">Taktak</span>
+                <span title={status.text} className={`h-2.5 w-2.5 rounded-full ring-2 ring-white/80 ${status.dot}`} />
               </span>
+              <span className="block truncate text-xs font-extrabold text-white/90">{status.text}</span>
             </span>
           </button>
           <div className="flex items-center gap-2">
             {canFetch && (
-              <button
-                type="button"
-                onClick={() => void refresh()}
-                disabled={loading}
-                aria-label="تحديث"
-                className={iconBtn('')}
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <button type="button" onClick={() => void refresh()} disabled={loading} aria-label="تحديث"
+                className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/30 disabled:opacity-60">
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
             )}
-            <button
-              type="button"
-              aria-label="التنبيهات"
-              onClick={() => { setTab('alerts'); setUnread(0); }}
-              className={`${iconBtn(tab === 'alerts' ? 'active' : '')} relative`}
-            >
-              <Bell className="w-4 h-4" />
-              {unread > 0 && <span className="absolute top-2 end-2 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />}
-            </button>
-            <button
-              type="button"
-              aria-label="الإعدادات"
-              onClick={() => setTab('settings')}
-              className={iconBtn(tab === 'settings' ? 'active' : '')}
-            >
-              <Settings className="w-4 h-4" />
+            <button type="button" aria-label="التنبيهات" onClick={() => { setTab('alerts'); setUnread(0); }}
+              className={`relative flex h-10 w-10 items-center justify-center rounded-2xl ring-1 ring-white/30 ${tab === 'alerts' ? 'bg-white text-slate-800' : 'bg-white/15'}`}>
+              <Bell className="h-4 w-4" />
+              {unread > 0 && <span className="absolute end-2 top-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" />}
             </button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-md mx-auto px-4 pt-1 pb-28">
+      <main className="mx-auto w-full max-w-md px-3 py-3 pb-28">
         {tab === 'home' && (
           <HomeView
             snapshot={snapshot}
+            readingAt={readingAt}
+            isLive={isLive}
             error={error}
             needsLogin={needsLogin}
             settings={settings}
@@ -264,12 +243,20 @@ export default function App() {
         )}
       </main>
 
-      <nav className="fixed bottom-3 inset-x-3 z-10">
-        <div className="max-w-md mx-auto flex gap-1 p-1.5 bg-white/95 backdrop-blur-md border border-[#dde6e4] rounded-2xl shadow-[0_12px_32px_rgba(13,148,136,0.12)]">
-          {navItem('home', 'الرئيسية', Home)}
-          {navItem('battery', 'البطارية', BatteryMedium)}
-          {navItem('forecast', 'التوقعات', CloudSun)}
-          {navItem('savings', 'التوفير', Coins)}
+      <nav aria-label="التنقل السفلي" className="fixed inset-x-0 bottom-0 z-50 rounded-t-[1.25rem] border-t border-slate-200/80 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_24px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+        <div className="mx-auto grid max-w-md grid-cols-5">
+          {TABS.map(({ id, label, Icon, line, text }) => {
+            const active = tab === id;
+            return (
+              <button key={id} type="button" onClick={() => setTab(id)} aria-current={active ? 'page' : undefined}
+                className={`flex flex-col items-center gap-1 border-t-[3px] pb-2.5 pt-2 text-[11px] transition-colors active:scale-95 ${
+                  active ? `${line} font-black ${text}` : 'border-transparent font-bold text-slate-500'
+                }`}>
+                <Icon className={`h-[22px] w-[22px] ${active ? text : 'text-slate-400'}`} strokeWidth={active ? 2.5 : 2} />
+                <span className="leading-none">{label}</span>
+              </button>
+            );
+          })}
         </div>
       </nav>
     </div>
