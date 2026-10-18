@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Taqati design: soft white cards on a pale mint page, rounded corners,
+ * Taktak design (Solar family): soft white cards on a pale page, rounded corners,
  * a light teal-tinted shadow, and one pastel colour per energy source.
  */
 
@@ -20,8 +20,7 @@ export const accent: Record<Accent, { chip: string; text: string; bar: string }>
   neutral: { chip: 'bg-slate-50 ring-slate-200', text: 'text-slate-500', bar: 'bg-slate-400' },
 };
 
-export const cardClass =
-  'bg-white border border-[#dde6e4] rounded-[1.15rem] shadow-[0_12px_32px_rgba(13,148,136,0.06)]';
+export const cardClass = 'energy-card';
 
 export const Chip: React.FC<{ tone: Accent; children: React.ReactNode }> = ({ tone, children }) => (
   <span className={`inline-flex w-9 h-9 items-center justify-center rounded-xl ring-1 ${accent[tone].chip} ${accent[tone].text}`}>
@@ -93,28 +92,32 @@ export const Button: React.FC<
     {...props}
     className={`h-12 px-5 rounded-2xl text-sm font-extrabold transition disabled:opacity-50 active:scale-[0.99] ${
       variant === 'primary'
-        ? 'bg-teal-700 text-white hover:bg-teal-800 shadow-[0_8px_20px_rgba(15,118,110,0.22)]'
+        ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-[0_8px_20px_rgba(15,23,42,0.18)]'
         : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
     } ${className}`}
   />
 );
 
 export const inputClass =
-  'w-full h-12 px-4 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-50';
+  'w-full h-12 px-4 rounded-2xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-slate-400 focus:ring-4 focus:ring-slate-100';
 
-/** Taqati mark: a sun rising over a leaf-shaped battery cell */
+/** Taktak mark: a sun with a lightning bolt — two "tak"s of energy */
 export const Logo: React.FC<{ size?: number }> = ({ size = 32 }) => (
   <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-    <rect x="2" y="2" width="60" height="60" rx="18" fill="#0f766e" />
-    <circle cx="32" cy="27" r="9" fill="#fcd34d" />
-    <g stroke="#fcd34d" strokeWidth="3.5" strokeLinecap="round">
-      <line x1="32" y1="9" x2="32" y2="13" />
-      <line x1="45" y1="14" x2="42" y2="17" />
-      <line x1="19" y1="14" x2="22" y2="17" />
-      <line x1="50" y1="27" x2="46" y2="27" />
-      <line x1="14" y1="27" x2="18" y2="27" />
+    <defs>
+      <radialGradient id="taktak-sun" cx="0.4" cy="0.35" r="0.75">
+        <stop offset="0" stopColor="#ffe27a" />
+        <stop offset="1" stopColor="#ffb21e" />
+      </radialGradient>
+    </defs>
+    <g stroke="#ffc94a" strokeWidth="4" strokeLinecap="round">
+      <line x1="32" y1="4" x2="32" y2="10" /><line x1="32" y1="54" x2="32" y2="60" />
+      <line x1="4" y1="32" x2="10" y2="32" /><line x1="54" y1="32" x2="60" y2="32" />
+      <line x1="12" y1="12" x2="16" y2="16" /><line x1="48" y1="48" x2="52" y2="52" />
+      <line x1="52" y1="12" x2="48" y2="16" /><line x1="16" y1="48" x2="12" y2="52" />
     </g>
-    <path d="M14 46 Q32 34 50 46 L50 52 Q32 42 14 52 Z" fill="#5eead4" />
+    <rect x="14" y="14" width="36" height="36" rx="12" fill="url(#taktak-sun)" />
+    <path d="M35 19 L24 34 H31 L28 45 L40 29 H33 Z" fill="#1e3a8a" />
   </svg>
 );
 
