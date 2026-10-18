@@ -41,7 +41,7 @@ const NumberField: React.FC<{
           const v = Number(e.target.value);
           if (Number.isFinite(v) && v >= min) onChange(v);
         }}
-        className="w-20 h-10 px-2 rounded-md border border-slate-300 bg-white text-sm text-center text-slate-900 tabular-nums focus:outline-none focus:border-slate-900"
+        className="w-20 h-10 px-2 rounded-xl border border-slate-200 bg-slate-50 text-sm text-center text-slate-900 tabular-nums focus:outline-none focus:border-slate-900"
       />
       <span className="text-xs text-slate-500 w-8">{unit}</span>
     </span>
@@ -125,7 +125,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             value={settings.currency}
             maxLength={6}
             onChange={(e) => set({ currency: e.target.value })}
-            className="w-20 h-10 px-2 rounded-md border border-slate-300 bg-white text-sm text-center text-slate-900 focus:outline-none focus:border-slate-900"
+            className="w-20 h-10 px-2 rounded-xl border border-slate-200 bg-slate-50 text-sm text-center text-slate-900 focus:outline-none focus:border-slate-900"
           />
           <span className="w-8" />
         </label>
@@ -162,7 +162,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             type="checkbox"
             checked={settings.sound}
             onChange={(e) => set({ sound: e.target.checked })}
-            className="w-5 h-5 accent-slate-900"
+            className="w-5 h-5 accent-teal-700"
           />
         </label>
       </Card>

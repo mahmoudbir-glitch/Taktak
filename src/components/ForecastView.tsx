@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { MapPin } from 'lucide-react';
 import type { Forecast, Place } from '../services/weather';
 import { currentPlace, searchPlaces } from '../services/weather';
-import { Button, Card, Row, inputClass } from './ui';
+import { Button, Card, Row, cardClass, inputClass } from './ui';
 
 interface ForecastViewProps {
   forecast: Forecast | null;
@@ -73,7 +73,7 @@ export const ForecastView: React.FC<ForecastViewProps> = ({ forecast, error, pvC
                 key={`${p.latitude},${p.longitude}`}
                 type="button"
                 onClick={() => choose(p)}
-                className="block w-full text-start px-3 py-2 text-sm rounded-md border border-slate-200 hover:bg-slate-50"
+                className="block w-full text-start px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-200 hover:bg-slate-50"
               >
                 {p.name}
               </button>
@@ -90,11 +90,11 @@ export const ForecastView: React.FC<ForecastViewProps> = ({ forecast, error, pvC
       {forecast && (
         <>
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <div className={`${cardClass} p-4`}>
               <p className="text-xs font-bold text-slate-500">باقي اليوم</p>
               <p className="mt-2"><span className="text-3xl font-bold tabular-nums">{forecast.todayRemainingKwh.toFixed(1)}</span><span className="text-sm text-slate-500 ms-1">kWh</span></p>
             </div>
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
+            <div className={`${cardClass} p-4`}>
               <p className="text-xs font-bold text-slate-500">غداً</p>
               <p className="mt-2"><span className="text-3xl font-bold tabular-nums">{forecast.tomorrowKwh.toFixed(1)}</span><span className="text-sm text-slate-500 ms-1">kWh</span></p>
             </div>
@@ -108,9 +108,9 @@ export const ForecastView: React.FC<ForecastViewProps> = ({ forecast, error, pvC
                 {hours.map((h) => (
                   <li key={h.at} className="flex items-center gap-3 py-1.5 text-sm">
                     <span className="w-14 text-slate-500 tabular-nums">{h.dayOffset ? `غداً ${h.label}` : h.label}</span>
-                    <span className="flex-1 h-2.5 bg-slate-100 rounded-sm overflow-hidden">
+                    <span className="flex-1 h-2.5 bg-amber-50 rounded-full overflow-hidden">
                       <span
-                        className={`block h-full ${forecast.peak?.at === h.at ? 'bg-amber-500' : 'bg-slate-900'}`}
+                        className={`block h-full rounded-full ${forecast.peak?.at === h.at ? 'bg-amber-500' : 'bg-amber-300'}`}
                         style={{ width: `${Math.min(100, (h.expectedKw / maxKw) * 100)}%` }}
                       />
                     </span>

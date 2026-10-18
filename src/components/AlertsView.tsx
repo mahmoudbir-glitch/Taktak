@@ -23,7 +23,7 @@ export const AlertsView: React.FC<{ alerts: AppAlert[]; onClear: () => void }> =
         <ul>
           {alerts.map((a) => (
             <li key={a.id} className="flex gap-3 px-4 py-3 border-b border-slate-100">
-              <span className={`w-1 shrink-0 rounded-sm ${bar[a.severity]}`} />
+              <span className={`w-1 shrink-0 rounded-full ${bar[a.severity]}`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="text-sm font-bold text-slate-900">{a.title}</p>
