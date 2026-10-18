@@ -94,6 +94,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </Card>
 
+      <Card title="الألواح والتوفير">
+        <NumberField
+          label="قدرة الألواح"
+          unit="kW"
+          step={0.1}
+          min={0.1}
+          value={settings.pvCapacityKw}
+          onChange={(v) => set({ pvCapacityKw: v })}
+        />
+        <NumberField
+          label="سعر الكيلوواط الساعي"
+          unit={settings.currency}
+          step={0.01}
+          min={0}
+          value={settings.pricePerKwh}
+          onChange={(v) => set({ pricePerKwh: v })}
+        />
+        <NumberField
+          label="كلفة المنظومة (اختياري)"
+          unit={settings.currency}
+          step={100}
+          min={0}
+          value={settings.systemCost}
+          onChange={(v) => set({ systemCost: v })}
+        />
+        <label className="flex items-center justify-between gap-3 px-4 py-2.5">
+          <span className="flex-1 text-sm text-slate-600">العملة</span>
+          <input
+            value={settings.currency}
+            maxLength={6}
+            onChange={(e) => set({ currency: e.target.value })}
+            className="w-20 h-10 px-2 rounded-md border border-slate-300 bg-white text-sm text-center text-slate-900 focus:outline-none focus:border-slate-900"
+          />
+          <span className="w-8" />
+        </label>
+      </Card>
+
       <Card title="البطارية والتنبيهات">
         <NumberField
           label="سعة البطارية"

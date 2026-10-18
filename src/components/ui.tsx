@@ -46,8 +46,16 @@ export const Tile: React.FC<{
   note?: string;
   tone?: Tone;
   icon: React.ReactNode;
-}> = ({ label, value, unit, note, tone = 'neutral', icon }) => (
-  <div className="bg-white border border-slate-200 rounded-lg p-4 flex flex-col justify-between min-h-[8.5rem]">
+  onClick?: () => void;
+}> = ({ label, value, unit, note, tone = 'neutral', icon, onClick }) => (
+  <div
+    role={onClick ? 'button' : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    onClick={onClick}
+    className={`bg-white border border-slate-200 rounded-lg p-4 flex flex-col justify-between min-h-[8.5rem] ${
+      onClick ? 'cursor-pointer hover:border-slate-400' : ''
+    }`}
+  >
     <div className="flex items-center justify-between text-slate-500">
       <span className="text-xs font-bold">{label}</span>
       <span className="text-slate-400">{icon}</span>

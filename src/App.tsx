@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, Home, RefreshCw, Settings } from 'lucide-react';
+import { BatteryMedium, Bell, CloudSun, Coins, Home, RefreshCw, Settings } from 'lucide-react';
 import {
   SmartessClientError, SmartessDevice, SmartessSession, SmartessSnapshot,
   fetchSnapshot, getServerConfig, loadSession, parseSmartessTime, saveSession,
@@ -15,11 +15,15 @@ import { playAlertSound } from './services/sound';
 import { AppSettings, loadSettings, saveSettings } from './lib/settings';
 import { AppAlert, evaluateAlerts, newAlertState } from './lib/alerts';
 import { timeOf } from './lib/format';
+import { Forecast, Place, fetchForecast } from './services/weather';
 import { HomeView } from './components/HomeView';
+import { BatteryView } from './components/BatteryView';
+import { ForecastView } from './components/ForecastView';
+import { SavingsView } from './components/SavingsView';
 import { AlertsView } from './components/AlertsView';
 import { SettingsView } from './components/SettingsView';
 
-type Tab = 'home' | 'alerts' | 'settings';
+type Tab = 'home' | 'battery' | 'forecast' | 'savings' | 'alerts' | 'settings';
 
 /** SmartESS refreshes every few minutes; once a minute is plenty */
 const POLL_MS = 60_000;
@@ -40,6 +44,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [alerts, setAlerts] = useState<AppAlert[]>([]);
   const [unread, setUnread] = useState(0);
+
+  const [forecast, setForecast] = useState<Forecast | null>(null);
+  const [forecastError, setForecastError] = useState<string | null>(null);
 
   const alertState = useRef(newAlertState());
   const settingsRef = useRef(settings);
@@ -98,6 +105,18 @@ export default function App() {
     };
   }, [canFetch, refresh]);
 
+  // Weather forecast: on start, when the place or panel size changes, and every 30 minutes
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetchForecast(settings.place, settings.pvCapacityKw)
+        .then((f) => { if (!cancelled) { setForecast(f); setForecastError(null); } })
+        .catch((err) => { if (!cancelled) setForecastError(err instanceof Error ? err.message : 'تعذر جلب التوقعات'); });
+    void load();
+    const timer = setInterval(load, 30 * 60_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [settings.place, settings.pvCapacityKw]);
+
   const handleLoggedIn = (s: SmartessSession, list: SmartessDevice[]) => {
     saveSession(s);
     setSession(s);
@@ -127,6 +146,11 @@ export default function App() {
     saveSettings(next);
   };
 
+  const handlePlace = (place: Place) => {
+    setForecast(null);
+    handleSettings({ ...settings, place });
+  };
+
   // Header status: what the numbers on screen are worth
   const stale = readingAt != null && Date.now() - readingAt > STALE_MS;
   const readingText = readingAt ? `آخر قراءة ${timeOf(readingAt)}` : 'متصل';
@@ -136,6 +160,11 @@ export default function App() {
     : !snapshot ? { dot: 'bg-slate-300', text: 'جاري الاتصال…' }
     : !snapshot.online || stale || error ? { dot: 'bg-amber-500', text: readingText }
     : { dot: 'bg-emerald-600', text: readingText };
+
+  const iconBtn = (state: string) =>
+    `w-9 h-9 flex items-center justify-center rounded-md border disabled:opacity-50 ${
+      state === 'active' ? 'border-slate-900 text-slate-900' : 'border-slate-200 text-slate-600'
+    }`;
 
   const navItem = (id: Tab, label: string, Icon: typeof Home, badge = 0) => (
     <button
@@ -160,9 +189,9 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-[#f4f5f7] text-slate-900">
       <header className="sticky top-0 z-10 bg-white border-b border-slate-200">
         <div className="max-w-md mx-auto h-14 px-4 flex items-center justify-between">
-          <h1 className="text-base font-bold">شمسك</h1>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 text-xs text-slate-500">
+          <button type="button" onClick={() => setTab('home')} className="text-base font-bold">شمسك</button>
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 text-xs text-slate-500 me-1">
               <span className={`w-2 h-2 rounded-full ${status.dot}`} />
               {status.text}
             </span>
@@ -172,11 +201,28 @@ export default function App() {
                 onClick={() => void refresh()}
                 disabled={loading}
                 aria-label="تحديث"
-                className="w-9 h-9 flex items-center justify-center rounded-md border border-slate-200 text-slate-600 disabled:opacity-50"
+                className={iconBtn('')}
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
             )}
+            <button
+              type="button"
+              aria-label="التنبيهات"
+              onClick={() => { setTab('alerts'); setUnread(0); }}
+              className={`${iconBtn(tab === 'alerts' ? 'active' : '')} relative`}
+            >
+              <Bell className="w-4 h-4" />
+              {unread > 0 && <span className="absolute top-1.5 end-1.5 w-2 h-2 rounded-full bg-rose-600" />}
+            </button>
+            <button
+              type="button"
+              aria-label="الإعدادات"
+              onClick={() => setTab('settings')}
+              className={iconBtn(tab === 'settings' ? 'active' : '')}
+            >
+              <Settings className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </header>
@@ -189,8 +235,20 @@ export default function App() {
             needsLogin={needsLogin}
             settings={settings}
             onLoggedIn={handleLoggedIn}
+            onOpenBattery={() => setTab('battery')}
+            onOpenForecast={() => setTab('forecast')}
           />
         )}
+        {tab === 'battery' && <BatteryView snapshot={snapshot} settings={settings} />}
+        {tab === 'forecast' && (
+          <ForecastView
+            forecast={forecast}
+            error={forecastError}
+            pvCapacityKw={settings.pvCapacityKw}
+            onPlaceChange={handlePlace}
+          />
+        )}
+        {tab === 'savings' && <SavingsView snapshot={snapshot} forecast={forecast} settings={settings} />}
         {tab === 'alerts' && <AlertsView alerts={alerts} onClear={() => setAlerts([])} />}
         {tab === 'settings' && (
           <SettingsView
@@ -209,8 +267,9 @@ export default function App() {
       <nav className="sticky bottom-0 bg-white border-t border-slate-200">
         <div className="max-w-md mx-auto flex">
           {navItem('home', 'الرئيسية', Home)}
-          {navItem('alerts', 'التنبيهات', Bell, unread)}
-          {navItem('settings', 'الإعدادات', Settings)}
+          {navItem('battery', 'البطارية', BatteryMedium)}
+          {navItem('forecast', 'التوقعات', CloudSun)}
+          {navItem('savings', 'التوفير', Coins)}
         </div>
       </nav>
     </div>
