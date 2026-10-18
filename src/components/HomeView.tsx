@@ -115,7 +115,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           accentTone="grid"
           icon={<UtilityPole className="w-5 h-5" />}
           value={gridValue}
-          note={s.gridConnected && s.gridVoltage ? `${Math.round(s.gridVoltage)} V` : undefined}
+          note={s.gridConnected
+            ? [s.gridVoltage ? `${Math.round(s.gridVoltage)} V` : null, s.gridPowerW ? `سحب ${kw(s.gridPowerW)} kW` : null].filter(Boolean).join(' • ') || undefined
+            : undefined}
           tone={s.gridConnected === false ? 'bad' : 'neutral'}
         />
         <Tile

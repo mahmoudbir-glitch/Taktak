@@ -53,6 +53,8 @@ export interface SmartessSnapshot {
   gridVoltage: number | null;
   gridFrequency: number | null;
   gridConnected: boolean | null;
+  /** Power drawn from the grid, W */
+  gridPowerW: number | null;
   inverterTemp: number | null;
   ratedPowerW: number | null;
   energyTodayKwh: number | null;
@@ -250,6 +252,20 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
 
   const p = flattenPars(last?.pars);
   const g = (id: string) => p.get(id);
+  // Many models send generic ids ("gd_eybond_read_15"); find a value by group prefix + unit instead
+  const byUnit = (prefix: string, unit: RegExp) => {
+    for (const [id, item] of p) {
+      if (id.startsWith(prefix) && unit.test(item.unit ?? '') && Number.isFinite(Number(item.val))) return item;
+    }
+    return undefined;
+  };
+  const textIn = (prefix: string, pattern: RegExp) => {
+    for (const [id, item] of p) {
+      const v = String(item.val ?? '');
+      if (id.startsWith(prefix) && !Number.isFinite(Number(v)) && pattern.test(v)) return v;
+    }
+    return null;
+  };
   const flowItem = (group: string, par: string) =>
     (Array.isArray(flow?.[group]) ? (flow![group] as ParItem[]) : []).find((i) => i.par === par);
   // Energy flow is the live view (what the SmartESS app's home screen shows); search it by name
@@ -264,22 +280,22 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
   };
   const row = rows?.device?.find((d) => String(d.sn) === device.sn) ?? rows?.device?.[0];
 
-  const batteryVoltage = num(g('bt_battery_voltage'));
+  const batteryVoltage = firstNum(num(g('bt_battery_voltage')), num(byUnit('bt_', /^V$/i)));
   const chargeA = num(g('bt_battery_charging_current'));
   const dischargeA = num(g('bt_battery_discharge_current'));
-  const batteryCurrentA = chargeA ? chargeA : dischargeA ? -dischargeA : chargeA ?? dischargeA;
+  const batteryCurrentA = (chargeA ? chargeA : dischargeA ? -dischargeA : chargeA ?? dischargeA) ?? num(byUnit('bt_', /^A$/i));
   const batteryPowerW = firstNum(
     watts(flowItem('bt_status', 'battery_active_power')),
     watts(flowFind(/^bt/, /power/i)),
     batteryVoltage !== null && batteryCurrentA !== null ? Math.round(batteryVoltage * batteryCurrentA) : null,
   );
 
-  const gridVoltage = num(g('gd_ac_input_voltage'));
+  const gridVoltage = firstNum(num(g('gd_ac_input_voltage')), num(byUnit('gd_', /^V$/i)));
   const mains = String(g('gd_mains_status')?.val ?? '');
   const gridConnected =
     gridVoltage !== null ? gridVoltage > 150 : mains ? /ok|normal|connect/i.test(mains) : null;
 
-  const workingState = (g('sy_status')?.val as string | undefined) ?? null;
+  const workingState = (g('sy_status')?.val as string | undefined) ?? textIn('sy_', /mode|fault|standby|line|battery/i);
   const flowPv = firstNum(watts(flowItem('pv_status', 'pv_output_power')), watts(flowFind(/^pv/, /power/i)));
   const flowLoad = firstNum(watts(flowItem('bc_status', 'load_active_power')), watts(flowFind(/^(bc|load)/, /active_power|power/i)));
   const liveFromFlow = flowPv !== null || flowLoad !== null;
@@ -293,8 +309,8 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
     // gts = when the last-data parameters were sent; the energy flow carries its own date
     updatedAt: liveFromFlow && flowDate ? flowDate : last?.gts ?? flowDate ?? null,
     pvPowerW: firstNum(flowPv, watts(g('pv_output_power'))),
-    pvVoltage: firstNum(num(g('pv_input_voltage')), num(g('pv_output_voltage'))),
-    pvCurrent: num(g('pv_input_current')),
+    pvVoltage: firstNum(num(g('pv_input_voltage')), num(g('pv_output_voltage')), num(byUnit('pv_', /^V$/i))),
+    pvCurrent: firstNum(num(g('pv_input_current')), num(byUnit('pv_', /^A$/i))),
     batterySoc: firstNum(num(flowFind(/^bt/, /capacity|soc/i)), num(g('bt_battery_capacity')), num(g('bt_battery_soc')), num(g('bt_state_of_charge'))),
     batteryVoltage,
     batteryPowerW,
@@ -304,11 +320,15 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
       watts(g('bc_output_active_power')),
       watts(g('bc_output_apparent_power')),
     ),
-    loadPercent: num(g('bc_battery_capacity')), // labelled "AC Output Load" by DessMonitor
+    loadPercent: firstNum(num(g('bc_battery_capacity')), num(byUnit('bc_', /^%$/))), // "AC Output Load" 
     gridVoltage,
-    gridFrequency: num(g('gd_ac_input_frequency')),
+    gridFrequency: firstNum(num(g('gd_ac_input_frequency')), num(byUnit('gd_', /^Hz$/i))),
+    gridPowerW: firstNum(watts(flowItem('gd_status', 'grid_active_power')), watts(g('gd_grid_active_power'))),
     gridConnected,
-    inverterTemp: firstNum(num(g('sy_inverter_temperature')), num(g('sy_heat_sink_temperature')), num(g('sy_temperature'))),
+    inverterTemp: firstNum(
+      num(g('sy_inverter_temperature')), num(g('sy_heat_sink_temperature')), num(g('sy_temperature')),
+      num(byUnit('sy_', /°?C$/i)),
+    ),
     ratedPowerW: firstNum(watts(g('sy_nonimal_output_active_power')), watts(g('sy_nonimal_output_apparent_power'))),
     energyTodayKwh: row?.energyToday !== undefined && Number.isFinite(Number(row.energyToday)) ? Number(row.energyToday) : null,
     workingState,
