@@ -22,6 +22,7 @@ import { ForecastView } from './components/ForecastView';
 import { SavingsView } from './components/SavingsView';
 import { AlertsView } from './components/AlertsView';
 import { SettingsView } from './components/SettingsView';
+import { Logo } from './components/ui';
 
 type Tab = 'home' | 'battery' | 'forecast' | 'savings' | 'alerts' | 'settings';
 
@@ -159,42 +160,41 @@ export default function App() {
     : error && !snapshot ? { dot: 'bg-rose-600', text: 'لا يوجد اتصال' }
     : !snapshot ? { dot: 'bg-slate-300', text: 'جاري الاتصال…' }
     : !snapshot.online || stale || error ? { dot: 'bg-amber-500', text: readingText }
-    : { dot: 'bg-emerald-600', text: readingText };
+    : { dot: 'bg-emerald-500', text: readingText };
 
   const iconBtn = (state: string) =>
-    `w-9 h-9 flex items-center justify-center rounded-md border disabled:opacity-50 ${
-      state === 'active' ? 'border-slate-900 text-slate-900' : 'border-slate-200 text-slate-600'
+    `w-10 h-10 flex items-center justify-center rounded-xl transition disabled:opacity-50 ${
+      state === 'active' ? 'bg-teal-700 text-white' : 'bg-white text-slate-600 border border-[#dde6e4]'
     }`;
 
-  const navItem = (id: Tab, label: string, Icon: typeof Home, badge = 0) => (
+  const navItem = (id: Tab, label: string, Icon: typeof Home) => (
     <button
       type="button"
-      onClick={() => {
-        setTab(id);
-        if (id === 'alerts') setUnread(0);
-      }}
-      className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-xs ${
-        tab === id ? 'text-slate-900 font-bold' : 'text-slate-400'
+      onClick={() => setTab(id)}
+      className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-xl text-[11px] font-bold transition ${
+        tab === id ? 'bg-teal-50 text-teal-800' : 'text-slate-400'
       }`}
     >
-      <span className="relative">
-        <Icon className="w-5 h-5" />
-        {badge > 0 && <span className="absolute -top-0.5 -end-1 w-2 h-2 rounded-full bg-rose-600" />}
-      </span>
+      <Icon className="w-5 h-5" />
       {label}
     </button>
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f4f5f7] text-slate-900">
-      <header className="sticky top-0 z-10 bg-white border-b border-slate-200">
-        <div className="max-w-md mx-auto h-14 px-4 flex items-center justify-between">
-          <button type="button" onClick={() => setTab('home')} className="text-base font-bold">شمسك</button>
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1.5 text-xs text-slate-500 me-1">
-              <span className={`w-2 h-2 rounded-full ${status.dot}`} />
-              {status.text}
+    <div className="min-h-screen flex flex-col bg-[#f3f7f6] text-slate-900">
+      <header className="sticky top-0 z-10 bg-[#f3f7f6]/90 backdrop-blur-md">
+        <div className="max-w-md mx-auto px-4 pt-4 pb-3 flex items-center justify-between">
+          <button type="button" onClick={() => setTab('home')} className="flex items-center gap-2.5 text-start">
+            <Logo size={38} />
+            <span>
+              <span className="block text-lg leading-tight font-black tracking-tight">Taqati</span>
+              <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                {status.text}
+              </span>
             </span>
+          </button>
+          <div className="flex items-center gap-2">
             {canFetch && (
               <button
                 type="button"
@@ -213,7 +213,7 @@ export default function App() {
               className={`${iconBtn(tab === 'alerts' ? 'active' : '')} relative`}
             >
               <Bell className="w-4 h-4" />
-              {unread > 0 && <span className="absolute top-1.5 end-1.5 w-2 h-2 rounded-full bg-rose-600" />}
+              {unread > 0 && <span className="absolute top-2 end-2 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />}
             </button>
             <button
               type="button"
@@ -227,7 +227,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-md mx-auto px-4 py-4">
+      <main className="flex-1 w-full max-w-md mx-auto px-4 pt-1 pb-28">
         {tab === 'home' && (
           <HomeView
             snapshot={snapshot}
@@ -264,8 +264,8 @@ export default function App() {
         )}
       </main>
 
-      <nav className="sticky bottom-0 bg-white border-t border-slate-200">
-        <div className="max-w-md mx-auto flex">
+      <nav className="fixed bottom-3 inset-x-3 z-10">
+        <div className="max-w-md mx-auto flex gap-1 p-1.5 bg-white/95 backdrop-blur-md border border-[#dde6e4] rounded-2xl shadow-[0_12px_32px_rgba(13,148,136,0.12)]">
           {navItem('home', 'الرئيسية', Home)}
           {navItem('battery', 'البطارية', BatteryMedium)}
           {navItem('forecast', 'التوقعات', CloudSun)}

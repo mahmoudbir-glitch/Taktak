@@ -7,7 +7,7 @@ import React from 'react';
 import type { SmartessSnapshot } from '../services/smartessClient';
 import type { AppSettings } from '../lib/settings';
 import { backupHours, formatHours, kw, num } from '../lib/format';
-import { Card, Row } from './ui';
+import { Card, Ring, Row } from './ui';
 
 export const BatteryView: React.FC<{ snapshot: SmartessSnapshot | null; settings: AppSettings }> = ({
   snapshot: s,
@@ -28,30 +28,16 @@ export const BatteryView: React.FC<{ snapshot: SmartessSnapshot | null; settings
   return (
     <div className="space-y-3">
       <Card>
-        <div className="p-4">
-          <div className="flex items-baseline justify-between">
-            <span className="text-xs font-bold text-slate-500">نسبة الشحن</span>
-            <span className={`text-xs font-bold ${charging ? 'text-emerald-700' : discharging ? 'text-amber-700' : 'text-slate-500'}`}>
-              {charging ? 'تشحن' : discharging ? 'تفرّغ' : 'مستقرة'}
-            </span>
-          </div>
-          <p className="mt-2">
-            <span className={`text-5xl font-bold tabular-nums ${low ? 'text-rose-700' : 'text-slate-900'}`}>{num(soc)}</span>
-            <span className="text-lg font-semibold text-slate-500 ms-1">%</span>
-          </p>
-          {/* Level bar: 10 equal segments */}
-          <div className="mt-4 grid grid-cols-10 gap-1">
-            {Array.from({ length: 10 }, (_, i) => (
-              <span
-                key={i}
-                className={`h-3 rounded-sm ${
-                  soc != null && soc >= (i + 1) * 10 - 5
-                    ? low ? 'bg-rose-500' : 'bg-slate-900'
-                    : 'bg-slate-200'
-                }`}
-              />
-            ))}
-          </div>
+        <div className="p-5 flex flex-col items-center">
+          <Ring value={soc} color={low ? '#e11d48' : '#10b981'}>
+            <span className={`text-5xl font-black tabular-nums ${low ? 'text-rose-600' : 'text-slate-900'}`}>{num(soc)}</span>
+            <span className="text-sm font-bold text-slate-400">%</span>
+          </Ring>
+          <span className={`mt-4 px-3 py-1 rounded-full text-xs font-extrabold ${
+            charging ? 'bg-emerald-50 text-emerald-700' : discharging ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'
+          }`}>
+            {charging ? `تشحن ${kw(w)} kW` : discharging ? `تفرّغ ${kw(-w!)} kW` : 'مستقرة'}
+          </span>
         </div>
       </Card>
 
