@@ -9,6 +9,7 @@
 
 import type { SmartessSnapshot } from '../services/smartessClient';
 import type { AppSettings } from './settings';
+import { ltr } from './format';
 
 export type Severity = 'critical' | 'warning' | 'info';
 
@@ -72,13 +73,13 @@ export function evaluateAlerts(
     const soc = s.batterySoc;
     edge('battery', soc <= settings.lowBatteryPercent, soc > settings.lowBatteryPercent + 2, () =>
       push('battery', soc <= 10 ? 'critical' : 'warning', 'البطارية منخفضة',
-        `نسبة الشحن ${Math.round(soc)}% (الحد ${settings.lowBatteryPercent}%).`));
+        `نسبة الشحن ${ltr(`${Math.round(soc)}%`)} (الحد ${ltr(`${settings.lowBatteryPercent}%`)}).`));
   }
 
   if (s.loadPowerW !== null) {
     const load = s.loadPowerW / 1000;
     edge('load', load >= settings.highLoadKw, load < settings.highLoadKw - 0.3, () =>
-      push('load', 'warning', 'استهلاك مرتفع', `المنزل يستهلك ${load.toFixed(2)} kW.`));
+      push('load', 'warning', 'استهلاك مرتفع', `المنزل يستهلك ${ltr(`${load.toFixed(2)} kW`)}.`));
   }
 
   return out;

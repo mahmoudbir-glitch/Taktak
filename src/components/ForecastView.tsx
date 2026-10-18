@@ -4,16 +4,26 @@
  */
 
 import React, { useState } from 'react';
-import { MapPin } from 'lucide-react';
+import { BarChart3, Lightbulb, MapPin, Search } from 'lucide-react';
 import type { Forecast, Place } from '../services/weather';
 import { currentPlace, searchPlaces } from '../services/weather';
-import { Button, Card, Row, cardClass, inputClass } from './ui';
+import { ltr } from '../lib/format';
+import { Button, Card, CardHead, Collapsible, InfoList, StatBox, inputClass } from './ui';
 
 interface ForecastViewProps {
   forecast: Forecast | null;
   error: string | null;
   pvCapacityKw: number;
   onPlaceChange: (p: Place) => void;
+}
+
+/** One practical tip from the forecast */
+function advice(f: Forecast, pvKw: number): string {
+  if (!f.peak) return 'لا شمس متبقية اليوم. اعتمد على البطارية بحمل خفيف حتى الصباح.';
+  const strong = f.peak.expectedKw >= pvKw * 0.5;
+  if (strong) return `أفضل وقت لتشغيل الأحمال الثقيلة (الغسالة، السخان، المكواة) حول الساعة ${f.peak.label}، حين يصل الإنتاج إلى ${ltr(`${f.peak.expectedKw.toFixed(1)} kW`)}.`;
+  if (f.peak.cloud >= 60) return 'غيوم كثيفة متوقعة؛ الإنتاج ضعيف اليوم، فوزّع الأحمال الثقيلة ووفّر البطارية.';
+  return `إنتاج متوسط اليوم، وذروته ${f.peak.label}. شغّل الأحمال الثقيلة وقتها واحدة بعد الأخرى.`;
 }
 
 export const ForecastView: React.FC<ForecastViewProps> = ({ forecast, error, pvCapacityKw, onPlaceChange }) => {
@@ -46,88 +56,91 @@ export const ForecastView: React.FC<ForecastViewProps> = ({ forecast, error, pvC
     }
   };
 
-  // Next 12 hours with sun, as a bar list
-  const hours = forecast?.hours.slice(0, 24).filter((h) => h.irradiance > 0).slice(0, 12) ?? [];
+  const hours = forecast?.hours.slice(0, 30).filter((h) => h.irradiance > 0).slice(0, 12) ?? [];
   const maxKw = Math.max(pvCapacityKw * 0.8, ...hours.map((h) => h.expectedKw), 0.1);
 
   return (
     <div className="space-y-3">
-      <Card>
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="flex items-center gap-2 text-sm text-slate-700">
-            <MapPin className="w-4 h-4 text-slate-400" />
-            {forecast?.place ?? '—'}
-          </span>
-          <button type="button" onClick={() => setEditing((v) => !v)} className="text-sm font-bold text-slate-900">
-            {editing ? 'إلغاء' : 'تغيير'}
-          </button>
-        </div>
+      <Card className="p-4">
+        <CardHead
+          icon={<MapPin className="h-5 w-5" />}
+          title={forecast?.place ?? '—'}
+          subtitle={`ألواح بقدرة ${ltr(`${pvCapacityKw} kW`)}`}
+          tone="sun"
+          right={
+            <button type="button" onClick={() => setEditing((v) => !v)} className="rounded-xl bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-700">
+              {editing ? 'إلغاء' : 'تغيير'}
+            </button>
+          }
+        />
         {editing && (
-          <div className="px-4 pb-4 space-y-2 border-t border-slate-100 pt-3">
+          <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
             <form onSubmit={search} className="flex gap-2">
               <input className={inputClass} placeholder="اسم المدينة" value={query} onChange={(e) => setQuery(e.target.value)} />
-              <Button type="submit" disabled={busy || query.trim().length < 2}>بحث</Button>
+              <Button type="submit" disabled={busy || query.trim().length < 2} aria-label="بحث"><Search className="h-4 w-4" /></Button>
             </form>
             {results.map((p) => (
-              <button
-                key={`${p.latitude},${p.longitude}`}
-                type="button"
-                onClick={() => choose(p)}
-                className="block w-full text-start px-4 py-2.5 text-sm font-semibold rounded-xl border border-slate-200 hover:bg-slate-50"
-              >
+              <button key={`${p.latitude},${p.longitude}`} type="button" onClick={() => choose(p)}
+                className="block w-full rounded-xl border border-slate-200 px-4 py-2.5 text-start text-sm font-semibold hover:bg-slate-50">
                 {p.name}
               </button>
             ))}
             <Button variant="plain" onClick={useGps} className="w-full">استخدام موقعي الحالي</Button>
-            {placeError && <p className="text-sm text-rose-700">{placeError}</p>}
+            {placeError && <p className="text-sm font-semibold text-rose-600">{placeError}</p>}
           </div>
         )}
       </Card>
 
-      {error && !forecast && <Card><p className="p-4 text-sm text-rose-700">{error}</p></Card>}
-      {!forecast && !error && <Card><p className="p-4 text-sm text-slate-500">جاري جلب التوقعات…</p></Card>}
+      {error && !forecast && <Card><p className="p-5 text-sm font-semibold text-rose-600">{error}</p></Card>}
+      {!forecast && !error && <Card><p className="p-5 text-sm font-semibold text-slate-500">جاري جلب التوقعات…</p></Card>}
 
       {forecast && (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            <div className={`${cardClass} p-4`}>
-              <p className="text-xs font-bold text-slate-500">باقي اليوم</p>
-              <p className="mt-2"><span className="text-3xl font-bold tabular-nums">{forecast.todayRemainingKwh.toFixed(1)}</span><span className="text-sm text-slate-500 ms-1">kWh</span></p>
-            </div>
-            <div className={`${cardClass} p-4`}>
-              <p className="text-xs font-bold text-slate-500">غداً</p>
-              <p className="mt-2"><span className="text-3xl font-bold tabular-nums">{forecast.tomorrowKwh.toFixed(1)}</span><span className="text-sm text-slate-500 ms-1">kWh</span></p>
-            </div>
-          </div>
+          <section className="energy-card grid grid-cols-3 gap-2 p-2.5">
+            <StatBox label="باقي اليوم" value={forecast.todayRemainingKwh.toFixed(1)} unit="kWh" tone="sun" />
+            <StatBox label="غداً" value={forecast.tomorrowKwh.toFixed(1)} unit="kWh" tone="sun" />
+            <StatBox label="الذروة" value={forecast.peak ? forecast.peak.label : '—'} tone="neutral" foot={forecast.peak ? <bdi dir="ltr">{forecast.peak.expectedKw.toFixed(2)} kW</bdi> : undefined} />
+          </section>
 
-          <Card title={`الإنتاج المتوقع بالساعة (ألواح ${pvCapacityKw} kW)`}>
+          <section className="energy-card flex items-start gap-3 p-4">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-500 ring-1 ring-indigo-100"><Lightbulb className="h-5 w-5" /></span>
+            <div>
+              <h2 className="text-sm font-black text-slate-900">نصيحة اليوم</h2>
+              <p className="mt-0.5 text-xs font-semibold leading-5 text-slate-600">{advice(forecast, pvCapacityKw)}</p>
+            </div>
+          </section>
+
+          <Collapsible icon={<BarChart3 className="h-5 w-5" />} title="الإنتاج بالساعة" subtitle="الساعات المشمسة القادمة" tone="sun" defaultOpen>
             {hours.length === 0 ? (
-              <p className="p-4 text-sm text-slate-500">لا شمس في الساعات القادمة. التوقعات تعود مع الصباح.</p>
+              <p className="py-4 text-sm font-semibold text-slate-500">لا شمس في الساعات القادمة. التوقعات تعود مع الصباح.</p>
             ) : (
-              <ul className="px-4 py-2">
+              <ul className="pt-2">
                 {hours.map((h) => (
                   <li key={h.at} className="flex items-center gap-3 py-1.5 text-sm">
-                    <span className="w-14 text-slate-500 tabular-nums">{h.dayOffset ? `غداً ${h.label}` : h.label}</span>
-                    <span className="flex-1 h-2.5 bg-amber-50 rounded-full overflow-hidden">
-                      <span
-                        className={`block h-full rounded-full ${forecast.peak?.at === h.at ? 'bg-amber-500' : 'bg-amber-300'}`}
-                        style={{ width: `${Math.min(100, (h.expectedKw / maxKw) * 100)}%` }}
-                      />
+                    <span className="w-16 shrink-0 font-bold text-slate-500 tabular-nums">{h.dayOffset ? `غداً ${h.label}` : h.label}</span>
+                    <span className="h-3 flex-1 overflow-hidden rounded-full bg-amber-50">
+                      <span className={`block h-full rounded-full ${forecast.peak?.at === h.at ? 'bg-amber-500' : 'bg-amber-300'}`}
+                        style={{ width: `${Math.min(100, (h.expectedKw / maxKw) * 100)}%` }} />
                     </span>
-                    <span className="w-16 text-end font-semibold tabular-nums">{h.expectedKw.toFixed(2)} kW</span>
+                    <span className="w-16 shrink-0 text-end font-black tabular-nums text-slate-800"><bdi dir="ltr">{h.expectedKw.toFixed(2)}</bdi></span>
                   </li>
                 ))}
               </ul>
             )}
-          </Card>
+          </Collapsible>
 
           {forecast.peak && (
-            <Card>
-              <Row label="ذروة الإنتاج اليوم" value={`${forecast.peak.label} • ${forecast.peak.expectedKw.toFixed(2)} kW`} />
-              <Row label="الغيوم وقت الذروة" value={`${forecast.peak.cloud}%`} />
-            </Card>
+            <Collapsible icon={<MapPin className="h-5 w-5" />} title="الطقس وقت الذروة" tone="neutral">
+              <InfoList
+                rows={[
+                  ['الإشعاع الشمسي', `${forecast.peak.irradiance} W/m²`],
+                  ['الغيوم', `${forecast.peak.cloud}%`],
+                  ['الحرارة', `${forecast.peak.tempC} °C`],
+                ]}
+              />
+            </Collapsible>
           )}
-          <p className="text-xs text-slate-400 px-1">التوقعات من Open-Meteo حسب الإشعاع الشمسي وقدرة الألواح المحددة في الإعدادات.</p>
+          <p className="px-1 text-[11px] font-semibold text-slate-400">التوقعات من Open-Meteo حسب الإشعاع الشمسي وقدرة الألواح في الإعدادات.</p>
         </>
       )}
     </div>

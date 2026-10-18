@@ -25,6 +25,8 @@ export interface AppSettings {
   highLoadKw: number;
   /** Play a short tone with new alerts */
   sound: boolean;
+  /** Show a system notification for new alerts (needs browser permission) */
+  notify: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lowBatteryPercent: 20,
   highLoadKw: 4,
   sound: true,
+  notify: false,
 };
 
 const KEY = 'shamsak.settings.v2';

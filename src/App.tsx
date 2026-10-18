@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { BatteryFull, Bell, CloudSun, Coins, Home, LayoutGrid, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { BatteryFull, Bell, CloudSun, Coins, Home, LayoutGrid, RefreshCw, SlidersHorizontal, WifiOff } from 'lucide-react';
 import {
   SmartessClientError, SmartessDevice, SmartessSession, SmartessSnapshot,
   fetchSnapshot, getServerConfig, loadSession, parseSmartessTime, saveSession,
@@ -15,6 +15,8 @@ import { playAlertSound } from './services/sound';
 import { AppSettings, loadSettings, saveSettings } from './lib/settings';
 import { AppAlert, evaluateAlerts, newAlertState } from './lib/alerts';
 import { timeOf } from './lib/format';
+import { HistoryPoint, addReading, loadDay } from './lib/history';
+import { showAlertNotification } from './services/notify';
 import { Forecast, Place, fetchForecast } from './services/weather';
 import { HomeView } from './components/HomeView';
 import { BatteryView } from './components/BatteryView';
@@ -29,6 +31,28 @@ type Tab = 'home' | 'battery' | 'forecast' | 'savings' | 'alerts' | 'settings';
 /** SmartESS refreshes every few minutes; once a minute is plenty */
 const POLL_MS = 60_000;
 const STALE_MS = 20 * 60 * 1000;
+const ALERTS_KEY = 'taktak.alerts.v1';
+
+function loadAlerts(): AppAlert[] {
+  try {
+    const raw = localStorage.getItem(ALERTS_KEY);
+    return raw ? (JSON.parse(raw) as AppAlert[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function useOnline() {
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+  return online;
+}
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('home');
@@ -43,15 +67,24 @@ export default function App() {
   const [readingAt, setReadingAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [alerts, setAlerts] = useState<AppAlert[]>([]);
+  const [alerts, setAlerts] = useState<AppAlert[]>(loadAlerts);
+  const [history, setHistory] = useState<HistoryPoint[]>(() => loadDay());
+  const online = useOnline();
   const [unread, setUnread] = useState(0);
 
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [forecastError, setForecastError] = useState<string | null>(null);
 
   const alertState = useRef(newAlertState());
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+
+  // Alerts survive a reload
+  useEffect(() => {
+    try { localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts.slice(0, 100))); } catch { /* storage unavailable */ }
+  }, [alerts]);
 
   useEffect(() => {
     getServerConfig()
@@ -63,7 +96,7 @@ export default function App() {
   const needsLogin = !session && serverCredentials === false;
 
   const refresh = useCallback(async () => {
-    if (!canFetch) return;
+    if (!canFetch || !navigator.onLine) return;
     setLoading(true);
     try {
       const s = await fetchSnapshot(session);
@@ -71,11 +104,16 @@ export default function App() {
       setSnapshot(s);
       setReadingAt(at);
       setError(null);
-      const fresh = evaluateAlerts(s, at, settingsRef.current, alertState.current);
+      setHistory(addReading(s, at));
+      // After a reload the alert memory starts empty: don't repeat what was already shown in the last 30 minutes
+      const keyOf = (a: AppAlert) => a.id.slice(0, a.id.lastIndexOf('-'));
+      const recent = new Set(alertsRef.current.filter((a) => Date.now() - a.at < 30 * 60_000).map(keyOf));
+      const fresh = evaluateAlerts(s, at, settingsRef.current, alertState.current).filter((a) => !recent.has(keyOf(a)));
       if (fresh.length) {
         setAlerts((prev) => [...fresh, ...prev].slice(0, 100));
         setUnread((n) => n + fresh.length);
         if (settingsRef.current.sound) playAlertSound(fresh[0].severity);
+        if (settingsRef.current.notify) fresh.forEach((a) => void showAlertNotification(a));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'خطأ غير معروف');
@@ -105,6 +143,11 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [canFetch, refresh]);
+
+  // Back online: fetch at once instead of waiting for the next minute
+  useEffect(() => {
+    if (online && canFetch) void refresh();
+  }, [online]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Weather forecast: on start, when the place or panel size changes, and every 30 minutes
   useEffect(() => {
@@ -156,7 +199,8 @@ export default function App() {
   const stale = readingAt != null && Date.now() - readingAt > STALE_MS;
   const readingText = readingAt ? `آخر قراءة ${timeOf(readingAt)}` : 'متصل';
   const status =
-    needsLogin ? { dot: 'bg-slate-300', text: 'غير مربوط' }
+    !online ? { dot: 'bg-slate-300', text: 'لا يوجد إنترنت' }
+    : needsLogin ? { dot: 'bg-slate-300', text: 'غير مربوط' }
     : error && !snapshot ? { dot: 'bg-rose-600', text: 'لا يوجد اتصال' }
     : !snapshot ? { dot: 'bg-slate-300', text: 'جاري الاتصال…' }
     : !snapshot.online || stale || error ? { dot: 'bg-amber-500', text: readingText }
@@ -205,6 +249,12 @@ export default function App() {
       </header>
 
       <main className="mx-auto w-full max-w-md px-3 py-3 pb-28">
+        {!online && (
+          <p className="mb-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600">
+            <WifiOff className="h-4 w-4 shrink-0 text-slate-400" />
+            لا يوجد اتصال بالإنترنت. تظهر آخر قراءة، والتحديث يعود تلقائياً.
+          </p>
+        )}
         {tab === 'home' && (
           <HomeView
             snapshot={snapshot}
@@ -213,12 +263,13 @@ export default function App() {
             error={error}
             needsLogin={needsLogin}
             settings={settings}
+            history={history}
             onLoggedIn={handleLoggedIn}
             onOpenBattery={() => setTab('battery')}
             onOpenForecast={() => setTab('forecast')}
           />
         )}
-        {tab === 'battery' && <BatteryView snapshot={snapshot} settings={settings} />}
+        {tab === 'battery' && <BatteryView snapshot={snapshot} settings={settings} history={history} />}
         {tab === 'forecast' && (
           <ForecastView
             forecast={forecast}
