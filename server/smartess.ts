@@ -271,7 +271,8 @@ export async function getSnapshot(auth: SmartessAuth, device: SmartessDevice): P
   return {
     deviceName: device.name,
     online,
-    updatedAt: (typeof flow?.date === 'string' ? flow.date : null) ?? last?.gts ?? null,
+    // gts = when the datalogger sent this data; the energy-flow "date" is just the server's current time
+    updatedAt: last?.gts ?? (typeof flow?.date === 'string' ? flow.date : null) ?? null,
     pvPowerW: firstNum(watts(g('pv_output_power')), watts(flowItem('pv_status', 'pv_output_power'))),
     pvVoltage: firstNum(num(g('pv_input_voltage')), num(g('pv_output_voltage'))),
     pvCurrent: num(g('pv_input_current')),
