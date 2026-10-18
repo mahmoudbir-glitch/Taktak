@@ -19,6 +19,7 @@ import {
 
 export type SmartessRequest =
   | { op: 'config' }
+  | { op: 'diag' }
   | { op: 'login'; usr: string; pwd: string; companyKey?: string }
   | { op: 'devices'; auth?: SmartessAuth }
   | { op: 'status'; auth?: SmartessAuth; device?: SmartessDevice };
@@ -80,11 +81,42 @@ async function withAuth<T>(clientAuth: unknown, fn: (auth: SmartessAuth) => Prom
 }
 
 export async function handleSmartess(body: unknown): Promise<HandlerResult> {
+  const started = Date.now();
+  const result = await route(body);
+  // One log line per request (no credentials or readings) so failures are visible in the host's logs
+  const b = result.body as { error?: string; code?: unknown; snapshot?: { online?: boolean; updatedAt?: string | null } };
+  console.log(JSON.stringify({
+    smartess: (body as { op?: string })?.op ?? 'unknown',
+    status: result.status,
+    ms: Date.now() - started,
+    ...(b?.error ? { error: b.error, code: b.code } : {}),
+    ...(b?.snapshot ? { online: b.snapshot.online, readingAt: b.snapshot.updatedAt } : {}),
+  }));
+  return result;
+}
+
+async function route(body: unknown): Promise<HandlerResult> {
   const req = (body ?? {}) as SmartessRequest;
   try {
     switch (req.op) {
       case 'config':
         return { status: 200, body: { serverCredentials: hasServerCredentials() } };
+
+      case 'diag': {
+        // Reachability check: log in with a user that doesn't exist; SmartESS must answer "user not found"
+        try {
+          await login('shamsak-reachability-probe', 'x');
+          return { status: 200, body: { reachable: true, answer: 'unexpected login success' } };
+        } catch (err) {
+          const code = err instanceof SmartessError ? err.code : undefined;
+          // A numeric code means SmartESS itself answered (network path OK); HTTP/timeouts are not numeric
+          const reachable = typeof code === 'number';
+          return {
+            status: 200,
+            body: { reachable, serverCredentials: hasServerCredentials(), answer: err instanceof Error ? err.message : String(err), code },
+          };
+        }
+      }
 
       case 'login': {
         const auth = await login(String(req.usr ?? '').trim(), String(req.pwd ?? ''), req.companyKey || undefined);
