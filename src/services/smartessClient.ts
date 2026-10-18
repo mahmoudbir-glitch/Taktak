@@ -169,3 +169,26 @@ export function snapshotToTelemetry(
     inverterRatedPowerKw: pick(kw(s.ratedPowerW), prev.inverterRatedPowerKw),
   };
 }
+
+/** Blank reading used in real mode until the first SmartESS response arrives (never simulator numbers). */
+export function emptyTelemetry(base: SolarTelemetry, batteryCapacityKwh: number): SolarTelemetry {
+  const zeroKeys: (keyof SolarTelemetry)[] = [
+    'pvPower', 'pvTodayKwh', 'pvVoltage1', 'pvCurrent1', 'pvVoltage2', 'pvCurrent2', 'pvPeakTodayKw',
+    'batterySoc', 'batteryPower', 'batteryVoltage', 'batteryCurrent', 'batteryTemp', 'batteryHealth', 'batteryCycles',
+    'batteryRemainingHours', 'loadPower', 'loadTodayKwh', 'essentialLoadPower', 'heavyLoadPower',
+    'gridPower', 'gridTodayImportKwh', 'gridTodayExportKwh', 'gridVoltage', 'gridFrequency',
+    'inverterTemp', 'inverterEfficiency', 'fanSpeedPercent',
+  ];
+  const t = { ...base, timestamp: new Date().toISOString(), batteryCapacityKwh, gridStatus: 'connected' as const, inverterStatus: 'offline' as const };
+  for (const k of zeroKeys) (t as Record<string, unknown>)[k] = 0;
+  t.unavailable = [...zeroKeys];
+  return t;
+}
+
+/** SmartESS timestamps are Beijing time ("YYYY-MM-DD HH:mm:ss", UTC+8). Returns epoch ms or null. */
+export function parseSmartessTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  if (/^\d{10,}$/.test(value)) return Number(value);
+  const t = Date.parse(`${value.replace(' ', 'T')}+08:00`);
+  return Number.isFinite(t) ? t : null;
+}

@@ -31,6 +31,8 @@ interface DashboardViewProps {
   /** Where the readings come from */
   dataSource?: 'real' | 'connecting' | 'failed' | 'simulation';
   onOpenSettings?: () => void;
+  liveInfo?: { updatedAt: number | null; deviceName: string; online: boolean } | null;
+  connectionError?: string | null;
   effectivePollInterval?: number;
   onLocationChange: (loc: GeoLocation) => void;
   onRequestGps: () => void;
@@ -57,6 +59,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   isEcoActive = false,
   dataSource = 'simulation',
   onOpenSettings,
+  liveInfo = null,
+  connectionError = null,
   effectivePollInterval = 5,
   onLocationChange,
   onRequestGps,
@@ -91,6 +95,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="p-4 sm:p-5 space-y-4">
+      {/* Real mode without a reading yet: say so instead of showing numbers */}
+      {(dataSource === 'connecting' || dataSource === 'failed') && !liveInfo && (
+        <div className={`rounded-2xl p-4 border text-sm ${
+          dataSource === 'failed'
+            ? 'bg-rose-950/50 border-rose-500/50 text-rose-100'
+            : 'bg-cyan-950/40 border-cyan-500/40 text-cyan-100'
+        }`}>
+          <p className="font-bold">
+            {dataSource === 'failed' ? 'لا توجد بيانات من محولك' : 'جاري جلب أول قراءة من SmartESS…'}
+          </p>
+          {connectionError && <p className="text-xs mt-1 opacity-90">السبب: {connectionError}</p>}
+          <p className="text-xs mt-1 opacity-80">لن تُعرض أي أرقام حتى تصل قراءة حقيقية من المحول.</p>
+          {dataSource === 'failed' && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="mt-3 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold"
+            >
+              فتح إعدادات SmartESS وتسجيل الدخول
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Real mode: when the inverter last reported, so it can be checked against the SmartESS app */}
+      {dataSource !== 'simulation' && liveInfo && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl px-4 py-2.5 bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-100">
+          <span>المحول: <strong>{liveInfo.deviceName}</strong>{liveInfo.online ? '' : ' (غير متصل حالياً)'}</span>
+          <span>
+            آخر قراءة من المحول:{' '}
+            <strong className="font-mono">
+              {liveInfo.updatedAt
+                ? new Date(liveInfo.updatedAt).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' })
+                : 'غير معروف'}
+            </strong>
+            {liveInfo.updatedAt && Date.now() - liveInfo.updatedAt > 20 * 60 * 1000 && (
+              <span className="text-amber-300 font-bold"> • قديمة</span>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Top Quick Status Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3 backdrop-blur-md">
         <div className="flex items-center gap-2.5">

@@ -19,6 +19,8 @@ interface StatsViewProps {
   telemetry: SolarTelemetry;
   tariff?: FinancialTariffConfig;
   savings?: FinancialSavingsEstimate;
+  /** Live inverter data: today's totals are real, history charts are not yet */
+  isRealData?: boolean;
 }
 
 export const StatsView: React.FC<StatsViewProps> = ({
@@ -27,6 +29,7 @@ export const StatsView: React.FC<StatsViewProps> = ({
   telemetry,
   tariff,
   savings,
+  isRealData = false,
 }) => {
   const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
   const [hoveredPoint, setHoveredPoint] = useState<HourlyStatsPoint | null>(null);
@@ -98,6 +101,11 @@ export const StatsView: React.FC<StatsViewProps> = ({
 
   return (
     <div className="p-4 sm:p-5 space-y-4">
+      {isRealData && (
+        <div className="rounded-2xl px-4 py-3 bg-amber-950/40 border border-amber-500/40 text-amber-100 text-xs leading-relaxed">
+          أرقام «اليوم» من محولك الحقيقي. أما منحنى الساعات وجدول الأسبوع والشهر فهي <strong>بيانات توضيحية</strong> حتى يُربط سجل SmartESS التاريخي.
+        </div>
+      )}
       {/* Header and Filter Selector */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 rounded-2xl p-3.5 backdrop-blur-md">
         <div>

@@ -19,7 +19,7 @@ import {
 import { DEFAULT_LOCATION, fetchRealSolarForecast, getUserGpsLocation } from './services/weatherApi';
 import { playAlertSound } from './services/sound';
 import {
-  SmartessSession, fetchSnapshot, loadSession, saveSession, snapshotToTelemetry
+  SmartessSession, emptyTelemetry, fetchSnapshot, loadSession, parseSmartessTime, saveSession, snapshotToTelemetry
 } from './services/smartessClient';
 import { AndroidFrame } from './components/AndroidFrame';
 import { AndroidNotificationBanner } from './components/AndroidNotificationBanner';
@@ -105,6 +105,8 @@ export default function App() {
   const [highContrast, setHighContrast] = useState(false);
   const [appliances, setAppliances] = useState<SmartAppliance[]>(INITIAL_APPLIANCES);
   const [smartessSession, setSmartessSession] = useState<SmartessSession | null>(() => loadSession());
+  // Live SmartESS status: when the inverter last reported, and whether we have any real reading yet
+  const [liveInfo, setLiveInfo] = useState<{ updatedAt: number | null; deviceName: string; online: boolean } | null>(null);
 
   // Prevent spamming the same alert repeatedly
   const lastAlertTimeRef = useRef<{ [key: string]: number }>({});
@@ -272,16 +274,15 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    // Entering real mode: drop the simulator's daily counters so they don't mix with real data
+    // Entering real mode: clear every simulator number; screens stay blank ("—") until SmartESS answers
     if (isRealSmartess && !wasRealRef.current) {
-      setTelemetry(prev => ({
-        ...prev,
-        timestamp: new Date().toISOString(),
-        loadTodayKwh: 0,
-        gridTodayImportKwh: 0,
-        gridTodayExportKwh: 0,
-        pvPeakTodayKw: 0,
-      }));
+      setTelemetry(prev => emptyTelemetry(prev, config.batteryCapacityKwh || 4.8));
+      setLiveInfo(null);
+    }
+    // Leaving real mode: start the simulator from its normal state
+    if (!isRealSmartess && wasRealRef.current) {
+      setTelemetry({ ...INITIAL_TELEMETRY, timestamp: new Date().toISOString() });
+      setLiveInfo(null);
     }
     wasRealRef.current = isRealSmartess;
 
@@ -295,6 +296,7 @@ export default function App() {
         if (cancelled) return;
         const capacity = config.batteryCapacityKwh || 4.8;
         setTelemetry(prev => snapshotToTelemetry(snapshot, prev, capacity));
+        setLiveInfo({ updatedAt: parseSmartessTime(snapshot.updatedAt), deviceName: snapshot.deviceName, online: snapshot.online });
         setConfig(prev => prev.connectionStatus === 'connected' && !prev.lastError
           ? prev
           : { ...prev, connectionStatus: 'connected', lastError: null, lastConnectedTime: new Date().toISOString() });
@@ -334,6 +336,8 @@ export default function App() {
   useEffect(() => { appliancesRef.current = appliances; }, [appliances]);
 
   useEffect(() => {
+    // The automation is simulated (no relay is actually switched), so it never runs on real inverter data
+    if (isRealSmartess) return;
     const { updatedAppliances, events } = evaluateSmartAppliances(
       appliancesRef.current,
       telemetry,
@@ -552,6 +556,8 @@ export default function App() {
               ? (config.connectionStatus === 'connected' ? 'real' : config.connectionStatus === 'failed' ? 'failed' : 'connecting')
               : 'simulation'}
             onOpenSettings={() => setCurrentTab('settings')}
+            liveInfo={isRealSmartess ? liveInfo : null}
+            connectionError={isRealSmartess ? config.lastError ?? null : null}
             effectivePollInterval={effectivePollInterval}
             onLocationChange={handleLocationChange}
             onRequestGps={handleRequestGps}
@@ -575,6 +581,7 @@ export default function App() {
             telemetry={telemetry}
             tariff={tariff}
             savings={savings}
+            isRealData={isRealSmartess}
           />
         )}
 

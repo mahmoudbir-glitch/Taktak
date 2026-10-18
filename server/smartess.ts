@@ -115,7 +115,7 @@ interface DessResponse<T> {
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new SmartessError(`SmartESS HTTP ${res.status}`, res.status);
+  if (!res.ok) throw new SmartessError(`SmartESS HTTP ${res.status}`, `HTTP_${res.status}`);
   const body = (await res.json()) as DessResponse<T>;
   if (body.err !== 0) {
     throw new SmartessError(describeError(body.err, body.desc), body.err);
