@@ -1,101 +1,12 @@
 @import "tailwindcss";
 
 @layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
   body {
-    font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Cairo', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    background: #f4f5f7;
+    color: #0f172a;
   }
 }
-
-@keyframes energyFlowToRight {
-  0% { stroke-dashoffset: 24; }
-  100% { stroke-dashoffset: 0; }
-}
-
-@keyframes energyFlowToLeft {
-  0% { stroke-dashoffset: 0; }
-  100% { stroke-dashoffset: 24; }
-}
-
-.animate-flow-forward {
-  animation: energyFlowToRight 1.2s linear infinite;
-}
-
-.animate-flow-backward {
-  animation: energyFlowToLeft 1.2s linear infinite;
-}
-
-/* Custom scrollbar for android look */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
-}
-
-/* High Contrast Outdoor Sunlight Mode */
-.high-contrast {
-  --bg-contrast: #000000;
-}
-
-.high-contrast body,
-.high-contrast {
-  background-color: #000000 !important;
-  color: #ffffff !important;
-}
-
-.high-contrast .bg-slate-950,
-.high-contrast .bg-slate-900,
-.high-contrast .bg-slate-900\/90,
-.high-contrast .bg-slate-900\/80,
-.high-contrast .bg-slate-900\/60,
-.high-contrast .bg-slate-950\/60,
-.high-contrast .bg-slate-950\/70,
-.high-contrast .bg-slate-950\/80,
-.high-contrast .bg-slate-950\/90 {
-  background-color: #050505 !important;
-  border-color: #475569 !important;
-  border-width: 2px !important;
-}
-
-.high-contrast .text-slate-400,
-.high-contrast .text-slate-500 {
-  color: #cbd5e1 !important;
-  font-weight: 600 !important;
-}
-
-.high-contrast .text-slate-300 {
-  color: #f1f5f9 !important;
-  font-weight: 700 !important;
-}
-
-.high-contrast .text-slate-200,
-.high-contrast .text-slate-100 {
-  color: #ffffff !important;
-  font-weight: 800 !important;
-}
-
-.high-contrast .border-slate-800,
-.high-contrast .border-slate-800\/80,
-.high-contrast .border-slate-800\/60,
-.high-contrast .border-slate-700 {
-  border-color: #64748b !important;
-}
-
-.high-contrast svg line,
-.high-contrast svg path {
-  stroke-width: 4.5px !important;
-}
-
-.high-contrast text {
-  font-weight: 800 !important;
-  fill: #f8fafc !important;
-}
-
